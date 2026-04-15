@@ -1,0 +1,6 @@
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/

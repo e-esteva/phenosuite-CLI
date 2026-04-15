@@ -1,0 +1,56 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/marker-metadata-batch.txt
+
+# to rename cluster id field:
+# sed -i -e 's/celltype/cluster/g' /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.csv
+
+# general params:
+adjust_coords=True
+compress=True
+target_size=10
+preFilter_masks=True
+
+# circle mask params:
+filled=True
+radius=5
+# only if ring (filled=False), otherwise ignored (rule of thumb: radius: num_points == 1:10)
+num_points=50
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+run_time=5
+memory_=200GB
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1373-no_artefacts_segmentation-spatial-anno-res5.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1422-no_artefacts_segmentation_res5_spatial_annos.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1552-no_artefacts_segmentation_res5_spatial_annos.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1556-no_artefacts_segmentation-v2-spatial-anno-res5.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1906-no_artefacts_segmentation_res5_spatial_annos.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/BM1070_seg_no_artefacts_res5_spatial_annos.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/out-phenomenalist/1422-no_artefacts_segmentation/mask-inputs/1422-no_artefacts_segmentation-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/out-phenomenalist/1552-no_artefacts_segmentation/mask-inputs/1552-no_artefacts_segmentation-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/out-phenomenalist/1556-no_artefacts_segmentation/mask-inputs/1556-no_artefacts_segmentation-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/out-phenomenalist/1906-no_artefacts_segmentation/mask-inputs/1906-no_artefacts_segmentation-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/out-phenomenalist/BM1070_seg_no_artefacts/mask-inputs/BM1070_seg_no_artefacts-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/out-phenomenalist/BM1070_seg_no_artefacts/mask-inputs/BM1070_seg_no_artefacts-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1373-no_artefacts_segmentation-spatial-anno-res5.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1422-no_artefacts_segmentation_res5_spatial_annos.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1552-no_artefacts_segmentation_res5_spatial_annos.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1556-no_artefacts_segmentation-v2-spatial-anno-res5.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/1906-no_artefacts_segmentation_res5_spatial_annos.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/artefact-removal/res5-spatial_annos/BM1070_seg_no_artefacts_res5_spatial_annos.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250228-Fusion-BM24-01373_Scan1.er.qptiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250228-Fusion-BM24-01422_Scan1.er.qptiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250304-Fusion-BM24-01552_Scan1.er.qptiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250228-Fusion-BM24-01556_Scan1.er.qptiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250304-Fusion-BM24-01906_Scan1.er.qptiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250228-Fusion-BM24-01070_Scan1.er.qptiff

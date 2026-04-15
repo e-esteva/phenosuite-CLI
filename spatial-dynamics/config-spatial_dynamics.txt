@@ -1,0 +1,32 @@
+configFile=config-spatial_dynamics.txt
+
+spatial_annos=batch-inputs/spatial-annos.txt
+outs=batch-inputs/outs.txt
+labels=batch-inputs/labels.txt
+
+## PWLO parameters:
+
+# return circos plot
+draw=False
+# microns : pixel instrument resolution:
+resolution=0.3774
+# inner radius (microns):
+p1=3
+# outer radius (microns):
+p2=30
+# compute kolmogorov effect-sizes:
+compute_effect_size=False
+
+## MODULE SELECTION
+module=0
+## 0: pairwise log-odds
+## 1: neighborhoods (3+ celltypes)
+## if 1 is selected, input celltypes in comma-delimited format (e.g. pDC,CD4T,CD8T)
+circuit=pdC,CD4T,CD8T
+
+## meta parameters:
+sample_count=$(wc -l ${spatial_annos} | awk '{print $1}')
+run_time=6
+memory_=100GB
+spatial_dynamics_meta_partition=a100_short
+pwlo_module_Path=`pwd`/run-pwlo.s

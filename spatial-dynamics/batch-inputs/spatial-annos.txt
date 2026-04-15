@@ -1,0 +1,5 @@
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-outs/p30025-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-outs/p30027-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-outs/p30029-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-outs/p30030-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-outs/p30053-flow_annos.csv

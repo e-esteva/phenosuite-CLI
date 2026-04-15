@@ -1,0 +1,40 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/marker-metadata-batch.txt
+
+# to rename cluster id field:
+# sed -i -e 's/celltype/cluster/g' /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.csv
+
+# general params:
+adjust_coords=True
+compress=True
+target_size=10
+preFilter_masks=True
+
+# circle mask params:
+filled=True
+radius=5
+# only if ring (filled=False), otherwise ignored (rule of thumb: radius: num_points == 1:10)
+num_points=50
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+run_time=5
+memory_=310GB
+/gpfs/data/abl/tric/Aifantis-CODEX/Annotated/1373/BM1373-v2-phenomenalist-auto_phenotpying-output-2025-09-25/annotated_spatial_coords-v6.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/Annotated/1906/BM1906-v2-phenomenalist-auto_phenotpying-output-2025-09-25/annotated_spatial_coords-v6.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/out-phenomenalist/20250228-Fusion-BM24-01373_Scan1.er_DAPI-CD45/mask-inputs/20250228-Fusion-BM24-01373_Scan1.er_DAPI-CD45-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/out-phenomenalist/20250304-Fusion-BM24-01906_Scan1.er_DAPI-CD45/mask-inputs/20250304-Fusion-BM24-01906_Scan1.er_DAPI-CD45-marker-metadata.csv
+/gpfs/data/abl/tric/Aifantis-CODEX/Annotated/1373/BM1373-v2-phenomenalist-auto_phenotpying-output-2025-09-25/annotated_spatial_coords-v6.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/Annotated/1906/BM1906-v2-phenomenalist-auto_phenotpying-output-2025-09-25/annotated_spatial_coords-v6.tiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250228-Fusion-BM24-01373_Scan1.er.qptiff
+/gpfs/data/abl/tric/Aifantis-CODEX/qptiffs/20250304-Fusion-BM24-01906_Scan1.er.qptiff

@@ -1,0 +1,5 @@
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/out-phenomenalist/mask-inputs/interactive_follicular_gating/merged/2551-gated_cells_2026-04-06_spatial_annos.csv
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/out-phenomenalist/mask-inputs/interactive_follicular_gating/merged/2912-gated_cells_2026-04-06_spatial_annos.csv
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/out-phenomenalist/mask-inputs/interactive_follicular_gating/merged/3474-gated_cells_2026-04-06_spatial_annos.csv
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/out-phenomenalist/mask-inputs/interactive_follicular_gating/merged/3772_3708-gated_cells_2026-04-06_spatial_annos.csv
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/instanseg_singularity_analysis_results/out-phenomenalist/mask-inputs/interactive_follicular_gating/merged/i23_3860-gated_cells_2026-04-06_spatial_annos.csv

@@ -1,0 +1,34 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/marker-metadata-batch.txt
+
+# to rename cluster id field:
+# sed -i -e 's/celltype/cluster/g' /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.csv
+
+# general params:
+adjust_coords=True
+compress=False
+target_size=10
+preFilter_masks=False
+
+# circle mask params:
+radius=5
+num_points=50
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+run_time=5
+memory_=200GB
+/gpfs/data/abl/tric/segmentation/data/Oriana-TimeSeries/Final-Annotations/9hpi/2021907_cpLN_Region_9_9hpi-annotated-spatial-data.csv
+None
+/gpfs/data/abl/tric/segmentation/data/Oriana-TimeSeries/Final-Annotations/9hpi/2021907_cpLN_Region_9_9hpi-radius5_preFiltered.tiff
+/gpfs/data/abl/tric/segmentation/data/Oriana-TimeSeries/qptiffs/20210907-9-hpi-cpLN.qptiff

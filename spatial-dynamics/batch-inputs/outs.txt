@@ -1,0 +1,5 @@
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-spatial_dynamics/
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-spatial_dynamics/
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-spatial_dynamics/
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-spatial_dynamics/
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250514_data-spatial_dynamics/

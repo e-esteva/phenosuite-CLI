@@ -1,0 +1,37 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/marker-metadata-batch.txt
+
+
+# general params:
+adjust_coords=1
+compress=False
+target_size=4
+preFilter_masks=False
+
+# circle mask params:
+radius=10
+num_points=100
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30019-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30029-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.csv
+None
+None
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30019-flow_annos.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30029-flow_annos.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230710_BreastCa_pre_30019_30027.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230802_BreastCa_post_B_30022_30053_30050.qptiff

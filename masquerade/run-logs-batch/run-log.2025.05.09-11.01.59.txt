@@ -1,0 +1,36 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/marker-metadata-batch.txt
+
+# to rename cluster id field:
+# sed -i -e 's/celltype/cluster/g' /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.csv
+
+# general params:
+adjust_coords=True
+compress=True
+target_size=10
+preFilter_masks=True
+
+# circle mask params:
+filled=True
+radius=5
+# only if ring (filled=False), otherwise ignored (rule of thumb: radius: num_points == 1:10)
+num_points=50
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+run_time=5
+memory_=310GB
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions-v2-p30029/p30029_pre-partition_2_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions-v2-p30029/p30029_pre-partition_2_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions-v2-p30029/p30029_pre-partition_2_spatial_annos-compressed.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff

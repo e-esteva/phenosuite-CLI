@@ -1,0 +1,43 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/batch-inputs/marker-metadata-batch.txt
+
+
+# general params:
+adjust_coords=1
+compress=False
+target_size=4
+preFilter_masks=False
+
+# circle mask params:
+radius=10
+num_points=100
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30019_20230710_BreastCa_pre_30019_30027.qptiff_job1021720240619_analysis_object_results/p_30019-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30025_20230708_BreastCa_pre_30030_30029_30025.qptiff_job1021620240619_analysis_object_results/p_30025-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30027_20230710_BreastCa_pre_30019_30027.qptiff_job1021820240619_analysis_object_results/p_30027-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30030_20230708_BreastCa_pre_30030_30029_30025.qptiff_job1021420240619_analysis_object_results/p_30030-flow_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30053_20230705_BreastCa_30020_30031_30053_Scan1.qptiff_job1021320240619_analysis_object_results/p_30053-flow_annos.csv
+None
+None
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30019_20230710_BreastCa_pre_30019_30027.qptiff_job1021720240619_analysis_object_results/p_30019-flow_annos-10GB.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30025_20230708_BreastCa_pre_30030_30029_30025.qptiff_job1021620240619_analysis_object_results/p_30025-flow_annos-10GB.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30027_20230710_BreastCa_pre_30019_30027.qptiff_job1021820240619_analysis_object_results/p_30027-flow_annos-10GB.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30030_20230708_BreastCa_pre_30030_30029_30025.qptiff_job1021420240619_analysis_object_results/p_30030-flow_annos-10GB.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/batch2/out-phenomenalist/p_30053_20230705_BreastCa_30020_30031_30053_Scan1.qptiff_job1021320240619_analysis_object_results/p_30053-flow_annos-10GB.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230710_BreastCa_pre_30019_30027.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230710_BreastCa_pre_30019_30027.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230802_BreastCa_post_B_30022_30053_30050.qptiff

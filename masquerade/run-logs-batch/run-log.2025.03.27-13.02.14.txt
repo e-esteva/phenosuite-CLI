@@ -1,0 +1,66 @@
+configFile=configFile-batch.txt
+
+spatial_metadata=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/spatial_anno-batch.txt
+
+image=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/qptiff-batch.txt
+
+outPath=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/outPaths-batch.txt
+
+relevant_markers=/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/ClusterMasks/masquerade/batch-inputs/marker-metadata-batch.txt
+
+# to rename cluster id field:
+# sed -i -e 's/celltype/cluster/g' /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/p30053-flow_annos.csv
+
+# general params:
+adjust_coords=1
+compress=False
+target_size=15
+preFilter_masks=False
+
+# circle mask params:
+radius=10
+num_points=100
+
+
+########
+sample_count=$(wc -l ${spatial_metadata} | awk '{print $1}')
+generate_masks_module_Path=run-masquerade-batch.sh
+masquerade_partition=a100_short
+run_time=5
+memory_=350GB
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/partition_1_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/partition_2_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/partition_3_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/partition_1_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/partition_2_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/partition_3_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/partition_1_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/partition_2_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/partition_3_spatial_annos.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/partition_1_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/partition_2_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/partition_3_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/partition_1_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/partition_2_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/partition_3_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/partition_1_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/partition_2_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/partition_3_markers.csv
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/p30019_partition_1.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/p30019_partition_2.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30019/p30019_partition_3.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/p30029_partition_1.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/p30029_partition_2.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30029/p30029_partition_3.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/p30053_partition_1.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/p30053_partition_2.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/flow-segmentations/20250320_data/outs/partitions/p30053/p30053_partition_3.tiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230710_BreastCa_pre_30019_30027.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230710_BreastCa_pre_30019_30027.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230710_BreastCa_pre_30019_30027.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230708_BreastCa_pre_30030_30029_30025.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230705_BreastCa_pre_30020_30031_30053.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230705_BreastCa_pre_30020_30031_30053.qptiff
+/gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/qptiffs/20230705_BreastCa_pre_30020_30031_30053.qptiff

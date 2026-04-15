@@ -1,0 +1,6 @@
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/singularity-qupath-v0.6/singularity-instanseg_results_filtered-Bcell_panel/20250128_4630-Y_3708-A9_Scan1.unmixed.qptiff_measurements.tsv.gz
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/singularity-qupath-v0.6/singularity-instanseg_results_filtered-Bcell_panel/20260128_3474-A_2551-AA_Scan2.unmixed.qptiff_measurements.tsv.gz
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/singularity-qupath-v0.6/singularity-instanseg_results_filtered-Bcell_panel/20260128_3772-A8_4704-F_Scan1.unmixed.qptiff_measurements.tsv.gz
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/singularity-qupath-v0.6/singularity-instanseg_results_filtered-Bcell_panel/20260128_3860-Q_2912-A3_Scan2.unmixed.qptiff_measurements.tsv.gz
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/singularity-qupath-v0.6/singularity-instanseg_results_filtered-Bcell_panel/20260128_5116-A_Tons-CD21_Scan1.unmixed.qptiff_measurements.tsv.gz
+/gpfs/data/abl/tric/ee699/MF-spleen-Opal/singularity-qupath-v0.6/singularity-instanseg_results_filtered-Bcell_panel/20260128_5116-A_Tons_Scan3.unmixed.qptiff_measurements.tsv.gz
