@@ -1,25 +1,37 @@
+# phenomenalist-config.txt
+# ========================
+# Sourced by phenomenalist-meta.s and run-phenomenalist.s. Bash variable
+# substitutions (e.g. $(wc -l ...)) are evaluated at source time.
+
 configFile=phenomenalist-config.txt
 
-#ls -d -1 /gpfs/data/abl/tric/segmentation/data/Anna-Human-LN/whole-panel/segmentation-files/*.csv > segmentation_files.txt
-#ls -d -1 /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/segmentation-files/*.csv > segmentation_files.txt
-#ls -d -1 /gpfs/data/abl/tric/segmentation/data/Anna-Human-LN/flow-annotations/segmentation-files/*.csv > segmentation_files.txt
-#ls -d -1 /gpfs/data/abl/tric/segmentation/data/BreastCancer-triple_negative-Project/segmentation-files/partial_response/pre/batch2/*.csv > segmentation_files.txt
-#ls -d -1 /gpfs/data/abl/tric/Aifantis-CODEX/mesmer-segmentations/maxima_threshold_0.075_interior_threshold_0.2_clahe_False/*/*.csv > segmentation_files.txt
+# ---------------------------------------------------------------------------
+# Batch inputs (one row per sample; row N across every file = sample N).
+# Pad any row that has no value with the literal string 'NULL'.
+# ---------------------------------------------------------------------------
+segmentation_file=batch-inputs/segmentation_files.txt   # cell-measurements CSV / TSV paths
+failed_markers=batch-inputs/failed-markers.txt          # markers to drop per sample
+nuclear_markers=batch-inputs/nuclear-markers.txt        # nuclear markers per sample
+out_dir=batch-inputs/out_dirs.txt                       # output directory per sample
+classifier_labels=batch-inputs/labels.txt               # classifier labels per sample
 
+# ---------------------------------------------------------------------------
+# Pipeline parameters (global — apply to every sample in the batch)
+# ---------------------------------------------------------------------------
+max_cells=3000000                                       # subsample threshold
+HALO=T                                                  # T: HALO format, F: Mesmer format
+phenotyping_template=                                   # gating template CSV (leave blank for none)
 
-segmentation_file=batch-inputs/segmentation_files.txt
-failed_markers=batch-inputs/failed-markers.txt
-nuclear_markers=batch-inputs/nuclear-markers.txt
-out_dir=batch-inputs/out_dirs.txt
-classifier_labels=batch-inputs/labels.txt
-max_cells=3000000
-
-batch_size=$(wc -l ${segmentation_file} | awk '{print $1}')
-HALO=T
-phenotyping_template=/gpfs/data/abl/tric/ee699/MF-spleen-Opal/phenotyping_template.csv
-
+# clustering_res accepts:
+#   '1,2,3'  -> explicit list  c(1, 2, 3)
+#   '5:7'    -> range          c(5, 6, 7)
 clustering_res=1,2
-module1_Path=run-phenomenalist.s
-module1_mem=300GB
-module1_time=0-12
-module1_partition=a100_short
+
+# ---------------------------------------------------------------------------
+# SLURM parameters for the array job
+# ---------------------------------------------------------------------------
+batch_size=$(wc -l ${segmentation_file} | awk '{print $1}')   # auto-computed from primary list
+module1_Path=run-phenomenalist.s                        # array-task launcher (in this dir)
+module1_mem=300GB                                       # memory per task
+module1_time=0-12                                       # wall time (D-HH)
+module1_partition=a100_short                            # SLURM partition (site-specific)

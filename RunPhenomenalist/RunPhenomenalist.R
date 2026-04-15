@@ -7,7 +7,26 @@ RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=
     library(ggsci)
   })
   
-  source('/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/RunPhenomenalist/phenomenalist-utils.R')
+  # Locate phenomenalist-utils.R portably. Search order:
+  #   1. PHENOMENALIST_DIR env var (set by run-phenomenalist.R)
+  #   2. Same directory as the currently running script
+  #   3. Current working directory
+  #   4. Historical GPFS fallback (original ABL/TRIC cluster path)
+  # Skip sourcing if the utils appear to be already loaded.
+  if (!exists("plot_heatmap.mod_v1", mode = "function")) {
+    .pheno_dir <- Sys.getenv("PHENOMENALIST_DIR", unset = "")
+    .candidates <- c(
+      if (nzchar(.pheno_dir)) file.path(.pheno_dir, "phenomenalist-utils.R"),
+      file.path(getwd(), "phenomenalist-utils.R"),
+      "/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/RunPhenomenalist/phenomenalist-utils.R"
+    )
+    .utils <- Find(file.exists, .candidates)
+    if (is.null(.utils)) {
+      stop("phenomenalist-utils.R not found. Set PHENOMENALIST_DIR or run from the ",
+           "RunPhenomenalist/ directory.")
+    }
+    source(.utils)
+  }
 
   # Default cols to skip for HALO:
   basic_skip_cols = "Blank|blank|DAPI"

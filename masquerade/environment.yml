@@ -1,0 +1,17 @@
+name: masquerade
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - tifffile
+  - imagecodecs
+  - scipy
+  - pandas
+  - matplotlib
+  - scikit-image
+  - tqdm
+  - numpy
+prefix: /gpfs/home/ee699/.conda/envs/masquerade
+
