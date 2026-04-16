@@ -2,7 +2,7 @@
 
 Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles three independent spatial-biology modules that operate on multiplexed tissue imaging data (CODEX, multiplexed IF, HALO / Mesmer segmentations):
 
-- **[RunPhenomenalist](RunPhenomenalist/)** — cell-type phenotyping and clustering from single-cell segmentation tables (R).
+- **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
 - **[masquerade](masquerade/)** — circular cluster-mask generation for QuPath overlays on OME-TIFF / QPTIFF images (Python).
 - **[spatial-dynamics](spatial-dynamics/)** — pairwise log-odds and multi-cell-type neighborhood enrichment for spatial cell–cell relationships (Python).
 
