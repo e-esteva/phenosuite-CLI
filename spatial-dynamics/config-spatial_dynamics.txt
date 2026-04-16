@@ -30,3 +30,6 @@ run_time=6
 memory_=100GB
 spatial_dynamics_meta_partition=a100_short
 pwlo_module_Path=`pwd`/run-pwlo.s
+
+spatial_circuit_module_Path=`pwd`/run-spatial_circuit-enrichment.s
+
