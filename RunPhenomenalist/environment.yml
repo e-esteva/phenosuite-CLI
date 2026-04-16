@@ -1,0 +1,49 @@
+name: runphenomenalist
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  # R runtime
+  - r-base=4.1
+
+  # Installer for github packages (phenomenalist is not on CRAN/Bioconductor)
+  - r-remotes
+
+  # CRAN deps of phenomenalist (from its DESCRIPTION)
+  - r-cowplot
+  - r-data.table
+  - r-dplyr
+  - r-fnn
+  - r-ggplot2
+  - r-ggsci
+  - r-glue
+  - r-igraph
+  - r-janitor
+  - r-rcolorbrewer
+  - r-readr
+  - r-rlang
+  - r-scattermore
+  - r-stringr
+  - r-tibble
+  - r-tidyr
+  - r-tidyselect
+  - r-tidyverse
+  - r-uwot
+
+  # Extra CRAN deps used by RunPhenomenalist.R / phenomenalist-utils.R
+  - r-circlize
+  - r-mclust
+
+  # Bioconductor deps
+  - bioconductor-complexheatmap
+  - bioconductor-matrixgenerics
+  - bioconductor-scran
+  - bioconductor-scuttle
+  - bioconductor-singlecellexperiment
+  - bioconductor-spatialexperiment
+  - bioconductor-summarizedexperiment
+
+# After env creation, install the phenomenalist GitHub package with:
+#   conda activate runphenomenalist
+#   Rscript -e 'remotes::install_github("igordot/phenomenalist")'

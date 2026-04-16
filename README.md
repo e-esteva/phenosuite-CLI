@@ -102,9 +102,25 @@ Only the **masquerade** module ships a dependency manifest ([`masquerade/environ
 
 ### RunPhenomenalist
 
-- **R ≥ 4.1.2** (the launcher does `module load r/4.1.2`).
-- The **`phenomenalist`** R package. `RunPhenomenalist.R` currently `source()`s it from an absolute GPFS path, so either install the package system-wide or patch [RunPhenomenalist.R](RunPhenomenalist/RunPhenomenalist.R) and [run-phenomenalist.R](RunPhenomenalist/run-phenomenalist.R:1) to point at your install.
-- CRAN / Bioconductor deps inferred from the source: `tidyverse`, `glue`, `cowplot`, `ggsci`, `RColorBrewer`, `SpatialExperiment`, `MatrixGenerics`, `ComplexHeatmap`, `scuttle`, `circlize`.
+Provision the shipped conda env and install the public [phenomenalist](https://github.com/igordot/phenomenalist) package from GitHub:
+
+```bash
+cd RunPhenomenalist/
+conda env create -f environment.yml
+conda activate runphenomenalist
+Rscript -e 'remotes::install_github("igordot/phenomenalist")'
+```
+
+What [environment.yml](RunPhenomenalist/environment.yml) pins:
+
+- `r-base=4.1` + `r-remotes`
+- CRAN deps of phenomenalist: `cowplot`, `data.table`, `dplyr`, `FNN`, `ggplot2`, `ggsci`, `glue`, `igraph`, `janitor`, `RColorBrewer`, `readr`, `rlang`, `scattermore`, `stringr`, `tibble`, `tidyr`, `tidyselect`, `tidyverse`, `uwot`
+- Extra CRAN deps used by `RunPhenomenalist.R` / `phenomenalist-utils.R`: `circlize`, `mclust`
+- Bioconductor deps: `ComplexHeatmap`, `MatrixGenerics`, `scran`, `scuttle`, `SingleCellExperiment`, `SpatialExperiment`, `SummarizedExperiment`
+
+The local `RunPhenomenalist/phenomenalist-utils.R` file is still sourced at runtime — it provides `create_object.mod`, `cluster.mod`, `plot_heatmap.mod_v1`, `plot_dr.mod`, `plot_spatial.mod`, `prepare_mask_inputs`, `phenomenalist.preprocess`, and `assign_celltype_with_template`, which are local modifications / helpers not in the public package.
+
+If you're not using conda, install the R packages however you normally would and make sure `library(phenomenalist)` works before running the pipeline.
 
 ### masquerade
 
@@ -265,12 +281,13 @@ Sentinels that all mean *not set* for any option value: `NULL`, `null`, `NA`, `n
 
 The legacy 9-positional invocation (`Rscript run-phenomenalist.R <seg> <failed> <nuclear> <HALO> <out> <res> <label> <max> <template>`) still works for backward compatibility with any external caller, but the named-flag form is preferred.
 
-Two environment variables control sibling-file and package discovery:
+The public [`phenomenalist`](https://github.com/igordot/phenomenalist) R package is loaded via `library(phenomenalist)` — no local sourcing of package `.R` files. If it's not installed the wrapper aborts with a clear install hint.
+
+One environment variable controls local sibling-file discovery:
 
 | Variable | Meaning |
 |---|---|
 | `PHENOMENALIST_DIR` | Directory holding `RunPhenomenalist.R` and `phenomenalist-utils.R`. Auto-detected from the script location; override only if you've split the files. |
-| `PHENOMENALIST_PKG_DIR` | Directory of `.R` files to `source()` for the `phenomenalist` package. If unset, the wrapper falls back to `library(phenomenalist)` and then, if that fails, to a historical GPFS path. |
 
 `phenomenalist-meta.s` and `run-phenomenalist.s` both set `PHENOMENALIST_DIR` to their own directory automatically.
 
@@ -521,7 +538,7 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 
 - **Site-specific paths.** [configFile-batch.txt:3-9](masquerade/configFile-batch.txt) contains hard-coded `/gpfs/data/abl/tric/…` paths that must be edited before use elsewhere. The RunPhenomenalist CLI no longer needs editing for this — it discovers sibling files from its own script directory and reads the package source directory from `PHENOMENALIST_PKG_DIR` (with `library(phenomenalist)` and a historical GPFS path as fallbacks).
 - **SLURM partitions are site-specific.** `a100_short` and `cpu_dev` will not exist on most clusters — edit each config and the `#SBATCH --partition=` line in [run-masquerade-batch.sh:3](masquerade/run-masquerade-batch.sh) before use.
-- **Partial dependency manifests.** Only masquerade ships an [environment.yml](masquerade/environment.yml); RunPhenomenalist (R) and spatial-dynamics (Python) have no `requirements.txt` / `environment.yml` / `DESCRIPTION`. The [Prerequisites](#prerequisites) section lists every import so you can build the remaining environments yourself.
+- **Partial dependency manifests.** masquerade ships [environment.yml](masquerade/environment.yml) and RunPhenomenalist ships [environment.yml](RunPhenomenalist/environment.yml); spatial-dynamics does not. The [Prerequisites](#prerequisites) section lists every spatial-dynamics import so you can build its env yourself.
 - **`run-pwlo.py` hard-codes `draw=False` and `compute_effect_size=False`** ([run-pwlo.py:13](spatial-dynamics/run-pwlo.py)) even though the config exposes those keys. Patch the wrapper if you need them.
 - **`module=1` dispatch is incomplete.** [run-spatial_dynamics.s:17](spatial-dynamics/run-spatial_dynamics.s) submits `${spatial_circuit_module_Path}`, which is not defined in the shipped [config-spatial_dynamics.txt](spatial-dynamics/config-spatial_dynamics.txt). Additionally, [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s) does not extract `${spatial_obj}` / `${out_dir}` / `${label}` from the batch-input lists on a per-array-task basis. Expect to fix both before using the circuit-enrichment path.
 - **`relevant_markers` is per-batch, not per-sample.** `run-masquerade-batch.sh` reads row N of `marker-metadata-batch.txt` like the other inputs, so to use one marker list across all samples you must repeat it on every line.

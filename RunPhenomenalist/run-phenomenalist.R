@@ -60,8 +60,14 @@ Sentinels that all mean 'not set' for any option value:
 Environment variables:
   PHENOMENALIST_DIR           Directory holding RunPhenomenalist.R and phenomenalist-utils.R.
                               Defaults to the directory containing this script.
-  PHENOMENALIST_PKG_DIR       Directory of .R files for the phenomenalist package to source
-                              at startup. If unset, falls back to library(phenomenalist).
+
+Prerequisites:
+  The 'phenomenalist' R package must be installed (loaded via library()). Install from
+  GitHub with:
+      Rscript -e 'remotes::install_github(\"igordot/phenomenalist\")'
+  Or provision the shipped conda env:
+      conda env create -f environment.yml && conda activate runphenomenalist
+      Rscript -e 'remotes::install_github(\"igordot/phenomenalist\")'
 "
 }
 
@@ -283,28 +289,17 @@ source(utils_file)
 source(pipeline_file)
 
 ## ---------------------------------------------------------------------------
-## Load the phenomenalist package (env-var directory, else library())
+## Load the public phenomenalist package (https://github.com/igordot/phenomenalist)
 ## ---------------------------------------------------------------------------
 
-pkg_dir <- Sys.getenv("PHENOMENALIST_PKG_DIR", unset = "")
-if (!nzchar(pkg_dir)) {
-  # Historical fallback path used inside the ABL/TRIC cluster.
-  default_pkg <- "/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/phenomenalist/R"
-  if (dir.exists(default_pkg)) pkg_dir <- default_pkg
-}
-if (nzchar(pkg_dir) && dir.exists(pkg_dir)) {
-  message("Sourcing phenomenalist package from: ", pkg_dir)
-  for (f in list.files(pkg_dir, pattern = "\\.R$", full.names = TRUE)) source(f)
-} else {
-  message("PHENOMENALIST_PKG_DIR not set; attempting library(phenomenalist)")
-  ok <- tryCatch({
-    suppressPackageStartupMessages(library(phenomenalist))
-    TRUE
-  }, error = function(e) FALSE)
-  if (!ok) {
-    die("phenomenalist package not available. Install it or set PHENOMENALIST_PKG_DIR ",
-        "to the package R/ source directory.")
-  }
+ok <- tryCatch({
+  suppressPackageStartupMessages(suppressWarnings(library(phenomenalist)))
+  TRUE
+}, error = function(e) FALSE)
+if (!ok) {
+  die("phenomenalist package is not installed. Install from GitHub with:\n",
+      "  Rscript -e 'remotes::install_github(\"igordot/phenomenalist\")'\n",
+      "Or provision the shipped conda env: conda env create -f environment.yml")
 }
 
 ## ---------------------------------------------------------------------------

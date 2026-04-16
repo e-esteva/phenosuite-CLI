@@ -1,24 +1,23 @@
 RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=NULL,HALO=T,mask.only=NULL,out_dir=getwd(),clustering_res=seq(5,7),classifier_label=NULL,min.cells=10,else_cytoplasm=F,max.cells=1e5,phenotyping_template=NULL){
   suppressPackageStartupMessages({
-    #library(phenomenalist)
+    library(phenomenalist)
     library(tidyverse)
     library(glue)
     library(cowplot)
     library(ggsci)
   })
-  
-  # Locate phenomenalist-utils.R portably. Search order:
+
+  # Locate phenomenalist-utils.R (local .mod function variants + prepare_mask_inputs
+  # helpers that are not part of the public phenomenalist package). Search order:
   #   1. PHENOMENALIST_DIR env var (set by run-phenomenalist.R)
   #   2. Same directory as the currently running script
   #   3. Current working directory
-  #   4. Historical GPFS fallback (original ABL/TRIC cluster path)
-  # Skip sourcing if the utils appear to be already loaded.
+  # Skip if already sourced.
   if (!exists("plot_heatmap.mod_v1", mode = "function")) {
     .pheno_dir <- Sys.getenv("PHENOMENALIST_DIR", unset = "")
     .candidates <- c(
       if (nzchar(.pheno_dir)) file.path(.pheno_dir, "phenomenalist-utils.R"),
-      file.path(getwd(), "phenomenalist-utils.R"),
-      "/gpfs/data/abl/tric/segmentation/CODEX-Pipeline/RunPhenomenalist/phenomenalist-utils.R"
+      file.path(getwd(), "phenomenalist-utils.R")
     )
     .utils <- Find(file.exists, .candidates)
     if (is.null(.utils)) {
