@@ -94,7 +94,7 @@ phenosuite-CLI/
 
 ## Prerequisites
 
-Only the **masquerade** module ships a dependency manifest ([`masquerade/environment.yml`](masquerade/environment.yml)). The R and spatial-dynamics environments must be provisioned by hand using the lists below.
+Every module ships a conda `environment.yml` — RunPhenomenalist installs an R runtime, masquerade and spatial-dynamics install Python runtimes. The sbatch launchers `source activate` each env by name, so create the env with the shipped file and the launchers work as-is.
 
 ### Cluster
 
@@ -141,10 +141,16 @@ Also required at runtime:
 
 ### spatial-dynamics
 
-- A Python 3 env exposed via `module load condaenvs/gpu/machinelearning` (edit to match your cluster). Required packages:
-  - `numpy`, `pandas`
-  - `scipy`, `scikit-learn`
-  - `matplotlib`, `seaborn`
+Create the conda env from the shipped spec — the launchers expect it to be named `spatial-dynamics` and run `source activate spatial-dynamics`:
+
+```bash
+cd spatial-dynamics/
+conda env create -f environment.yml
+# or, if the env already exists:
+conda env update -f environment.yml --prune
+```
+
+The spec pins `python=3.10` and pulls `numpy`, `pandas`, `scipy`, `scikit-learn`, `matplotlib`, `seaborn`, `pillow` from `conda-forge`. See [spatial-dynamics/environment.yml](spatial-dynamics/environment.yml).
 
 ---
 
@@ -392,7 +398,7 @@ Computes spatial relationships between annotated cell types. Two modules are sel
 
 `sbatch run-spatial_dynamics.s` reads [config-spatial_dynamics.txt](spatial-dynamics/config-spatial_dynamics.txt) and dispatches on `module`:
 
-- `module=0` submits [run-pwlo.s](spatial-dynamics/run-pwlo.s) as an array job. Each task loads the `machinelearning` conda env, extracts its row, and runs:
+- `module=0` submits [run-pwlo.s](spatial-dynamics/run-pwlo.s) as an array job. Each task activates the `spatial-dynamics` conda env, extracts its row, and runs:
   ```bash
   python3 run-pwlo.py \
     ${spatial_obj} \  # spatial-annotation CSV
@@ -543,9 +549,8 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 
 ## Known limitations
 
-- **Site-specific paths.** [configFile-batch.txt:3-9](masquerade/configFile-batch.txt) contains hard-coded `/gpfs/data/abl/tric/…` paths that must be edited before use elsewhere. The RunPhenomenalist CLI no longer needs editing for this — it discovers sibling files from its own script directory and reads the package source directory from `PHENOMENALIST_PKG_DIR` (with `library(phenomenalist)` and a historical GPFS path as fallbacks).
+- **Site-specific paths.** [configFile-batch.txt:3-9](masquerade/configFile-batch.txt) contains hard-coded `/gpfs/data/abl/tric/…` paths that must be edited before use elsewhere. The RunPhenomenalist CLI no longer needs editing for this — it discovers sibling files from its own script directory and loads `library(phenomenalist)` from the normal R library path.
 - **SLURM partitions are site-specific.** `a100_short` and `cpu_dev` will not exist on most clusters — edit each config and the `#SBATCH --partition=` line in [run-masquerade-batch.sh:3](masquerade/run-masquerade-batch.sh) before use.
-- **Partial dependency manifests.** masquerade ships [environment.yml](masquerade/environment.yml) and RunPhenomenalist ships [environment.yml](RunPhenomenalist/environment.yml); spatial-dynamics does not. The [Prerequisites](#prerequisites) section lists every spatial-dynamics import so you can build its env yourself.
 - **`run-pwlo.py` hard-codes `draw=False` and `compute_effect_size=False`** ([run-pwlo.py:13](spatial-dynamics/run-pwlo.py)) even though the config exposes those keys. Patch the wrapper if you need them.
 - **`module=1` dispatch is incomplete.** [run-spatial_dynamics.s:17](spatial-dynamics/run-spatial_dynamics.s) submits `${spatial_circuit_module_Path}`, which is not defined in the shipped [config-spatial_dynamics.txt](spatial-dynamics/config-spatial_dynamics.txt). Additionally, [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s) does not extract `${spatial_obj}` / `${out_dir}` / `${label}` from the batch-input lists on a per-array-task basis. Expect to fix both before using the circuit-enrichment path.
 - **`relevant_markers` is per-batch, not per-sample.** `run-masquerade-batch.sh` reads row N of `marker-metadata-batch.txt` like the other inputs, so to use one marker list across all samples you must repeat it on every line.

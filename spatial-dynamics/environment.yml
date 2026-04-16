@@ -1,0 +1,25 @@
+name: spatial-dynamics
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+
+  # Core numerics / data frames (used across every module)
+  - numpy
+  - pandas
+  - scipy
+
+  # Modeling (KNeighborsRegressor for neighborhood weighting)
+  - scikit-learn
+
+  # Plotting: heatmaps, scatter, circos-style figures
+  - matplotlib
+  - seaborn
+
+  # Image I/O for the optimize-neighborhoods diagnostic figures
+  - pillow
+
+# Create with:
+#   conda env create -f environment.yml
+#   conda activate spatial-dynamics
