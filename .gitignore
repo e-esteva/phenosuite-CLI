@@ -8,3 +8,8 @@ spatial-dynamics/getNeighborhoods-v0.R
 spatial-dynamics/spatial_obj_p30025.csv
 RunPhenomenalist/v0/
 RunPhenomenalist/run-logs-batch/
+
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
