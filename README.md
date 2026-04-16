@@ -34,7 +34,7 @@ phenosuite-CLI/
 ├── README.md
 ├── .gitignore
 │
-├── RunPhenomenalist/                         # R pipeline: phenotyping + clustering
+├── RunPhenomenalist/                         # R pipeline: scaling + dimensionality reduction + clustering
 │   ├── RunPhenomenalist.R                    #   core pipeline function
 │   ├── run-phenomenalist.R                   #   CLI wrapper (parses 9 positional args)
 │   ├── phenomenalist-utils.R                 #   plotting / clustering / cell-type utilities
