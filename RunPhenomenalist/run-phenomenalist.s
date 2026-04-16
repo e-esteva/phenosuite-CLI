@@ -68,18 +68,18 @@ echo "  failed_markers    : ${failed_markers_tmp:-<none>}"
 echo "  nuclear_markers   : ${nuclear_markers_tmp:-<none>}"
 echo "  out_dir           : ${out_dir_tmp}"
 echo "  classifier_label  : ${classifier_label_tmp:-<none>}"
-echo "  HALO              : ${HALO}"
 echo "  clustering_res    : ${clustering_res}"
 echo "  max_cells         : ${max_cells}"
 echo "  phenotyping_tmpl  : ${phenotyping_template:-<none>}"
+echo "  skip_cols         : ${skip_cols:-<auto>}"
 
 Rscript "${SCRIPT_DIR}/run-phenomenalist.R" \
     --segmentation-file="${segmentation_file_tmp}" \
     --failed-markers="${failed_markers_tmp}" \
     --nuclear-markers="${nuclear_markers_tmp}" \
-    --halo="${HALO}" \
     --out-dir="${out_dir_tmp}" \
     --clustering-res="${clustering_res}" \
     --classifier-label="${classifier_label_tmp}" \
     --max-cells="${max_cells}" \
-    --phenotyping-template="${phenotyping_template:-}"
+    --phenotyping-template="${phenotyping_template:-}" \
+    --skip-cols="${skip_cols:-}"

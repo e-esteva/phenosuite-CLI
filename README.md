@@ -1,6 +1,6 @@
 # phenosuite-CLI
 
-Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles three independent spatial-biology modules that operate on multiplexed tissue imaging data (CODEX, multiplexed IF, HALO / Mesmer segmentations):
+Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles three independent spatial-biology modules that operate on multiplexed tissue imaging data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations):
 
 - **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
 - **[masquerade](masquerade/)** — circular cluster-mask generation for QuPath overlays on OME-TIFF / QPTIFF images (Python).
@@ -160,7 +160,7 @@ All three modules follow the same pattern:
 
 ```bash
 cd RunPhenomenalist/
-# 1. Edit phenomenalist-config.txt (HALO, clustering_res, SLURM params, etc.)
+# 1. Edit phenomenalist-config.txt (clustering_res, SLURM params, etc.)
 vi phenomenalist-config.txt
 # 2. Populate batch-inputs/ — one line per sample in each file; use 'NULL' for empty rows
 vi batch-inputs/segmentation_files.txt
@@ -180,7 +180,6 @@ Rscript run-phenomenalist.R --help
 Rscript run-phenomenalist.R \
     --segmentation-file=/data/sample1.csv \
     --out-dir=/data/sample1/out \
-    --halo=T \
     --clustering-res=5:7 \
     --failed-markers=AF-Ak154,DAPI
 ```
@@ -224,11 +223,19 @@ sbatch run-spatial_dynamics.s
 
 Reads single-cell segmentation measurements (one row per cell, one column per marker), builds a `SpatialExperiment` object, performs Leiden clustering at one or more resolutions, and emits marker-expression heatmaps, UMAP / spatial expression plots, and cluster assignments. Optionally assigns cell types using a manual gating template. The output `mask-inputs/` directory is formatted to feed directly into the **masquerade** module.
 
-Supports two segmentation formats via the `HALO` toggle: HALO (`HALO=T`) and Mesmer (`HALO=F`).
+Supports HALO-, Mesmer-, and QuPath-style segmentation tables out of the box. The format is **auto-detected from the column headers** at runtime:
+
+| Format | Fingerprint |
+|---|---|
+| **QuPath** | Space-delimited `Centroid X [µm\|px]` / `Centroid Y [µm\|px]` columns, and/or colon-separated per-compartment means (e.g. `CD3: Cell: Mean`). Centroid unit suffixes are tolerated — `µm`, `px`, `pixels`, or no suffix are all resolved to `x` / `y`. |
+| **HALO** | `<marker> Cell/Nucleus/Cytoplasm/Membrane Intensity` columns and/or HALO metadata (`Classification`, `Completeness`). |
+| **Mesmer** | Bare `label, y, x[, size, …]` header block followed by per-marker columns. |
+
+Pass `--skip-cols=REGEX` to override the column-filter regex for custom schemas or when auto-detection picks wrong.
 
 #### Inputs
 
-- **Segmentation files** (CSV / TSV / TSV.gz): one row per cell, columns for `x`, `y`, and per-marker intensities. Format depends on the `HALO` flag.
+- **Segmentation files** (CSV / TSV / TSV.gz): one row per cell, columns for `x`, `y`, and per-marker intensities. HALO, Mesmer, and QuPath layouts are all accepted — no flag needed.
 - Optional **phenotyping template** CSV with manual gating rules (`phenotyping_template` key in the config).
 
 #### Outputs
@@ -251,12 +258,12 @@ Rscript run-phenomenalist.R \
     --segmentation-file="${segmentation_file_tmp}" \
     --failed-markers="${failed_markers_tmp}" \
     --nuclear-markers="${nuclear_markers_tmp}" \
-    --halo="${HALO}" \
     --out-dir="${out_dir_tmp}" \
     --clustering-res="${clustering_res}" \
     --classifier-label="${classifier_label_tmp}" \
     --max-cells="${max_cells}" \
-    --phenotyping-template="${phenotyping_template}"
+    --phenotyping-template="${phenotyping_template}" \
+    --skip-cols="${skip_cols}"
 ```
 
 Full option reference:
@@ -267,19 +274,19 @@ Required:
   --out-dir=DIR               output directory (created if missing)
 
 Optional:
-  --halo=T|F                  HALO (T) vs Mesmer (F) format                 [default: T]
   --failed-markers=LIST       comma-separated markers to drop               [default: none]
   --nuclear-markers=LIST      comma-separated nuclear markers               [default: none]
   --classifier-label=LIST     comma-separated classifier labels             [default: none]
   --clustering-res=SPEC       '1,2,3' explicit list, or '5:7' range         [default: 1,2]
   --max-cells=N               cell subsample threshold                      [default: 100000]
   --phenotyping-template=PATH manual-gating template CSV                    [default: none]
+  --skip-cols=REGEX           override column-filter regex (else auto)      [default: auto]
   -h, --help                  show help and exit
 ```
 
 Sentinels that all mean *not set* for any option value: `NULL`, `null`, `NA`, `none`, `None`, `''` (empty), `0`. That makes every row of every `batch-inputs/*.txt` file safe to pad with `NULL`.
 
-The legacy 9-positional invocation (`Rscript run-phenomenalist.R <seg> <failed> <nuclear> <HALO> <out> <res> <label> <max> <template>`) still works for backward compatibility with any external caller, but the named-flag form is preferred.
+The legacy 8-positional invocation (`Rscript run-phenomenalist.R <seg> <failed> <nuclear> <out> <res> <label> <max> <template>`) still works for backward compatibility with any external caller, but the named-flag form is preferred.
 
 The public [`phenomenalist`](https://github.com/igordot/phenomenalist) R package is loaded via `library(phenomenalist)` — no local sourcing of package `.R` files. If it's not installed the wrapper aborts with a clear install hint.
 
@@ -435,8 +442,8 @@ classifier_labels=batch-inputs/labels.txt              # per-sample phenotyping 
 
 # Phenotyping parameters
 max_cells=3000000                                    # int — subsample threshold
-HALO=T                                               # T/F — HALO vs Mesmer segmentation format
 phenotyping_template=                                # optional gating template CSV (leave blank for none)
+skip_cols=                                           # optional regex override (leave blank for auto-detect)
 clustering_res=1,2                                   # comma list ('1,2,3') or range ('5:7' → c(5,6,7))
 
 # SLURM parameters

@@ -1,4 +1,4 @@
-RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=NULL,HALO=T,mask.only=NULL,out_dir=getwd(),clustering_res=seq(5,7),classifier_label=NULL,min.cells=10,else_cytoplasm=F,max.cells=1e5,phenotyping_template=NULL){
+RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=NULL,mask.only=NULL,out_dir=getwd(),clustering_res=seq(5,7),classifier_label=NULL,min.cells=10,else_cytoplasm=F,max.cells=1e5,phenotyping_template=NULL,skip_cols=NULL){
   suppressPackageStartupMessages({
     library(phenomenalist)
     library(tidyverse)
@@ -27,65 +27,66 @@ RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=
     source(.utils)
   }
 
-  # Default cols to skip for HALO:
-  basic_skip_cols = "Blank|blank|DAPI"
-  
   data_loc=segmentation_file
-  
-  ## Default cols to skip for HALO:
-  # here if using
-  if(is.null(nuclear.markers)){
-    halo_skip_cols = "Classification|Completeness|Cytoplasm|Nucleus|Membrane|DAPI"
-    if(length(failed.markers)>0){
-      halo_skip_cols = "Classification|Completeness|Cytoplasm|Nucleus|Membrane|DAPI"
-      halo_skip_cols=paste0(halo_skip_cols,paste(failed.markers,collapse = '|'),collapse = '|')
-      
-    }
-  }else{
-    halo_skip_cols = "Classification|Completeness|Membrane|"
-    if(length(failed.markers)>0){
-      halo_skip_cols=paste0(halo_skip_cols,paste(failed.markers,collapse = '|'),collapse = '|')
-      
-    }
+
+  # ---------------------------------------------------------------------------
+  # Auto-detect segmentation format (HALO / Mesmer / QuPath) from the column
+  # headers, unless the caller has supplied an explicit skip_cols regex.
+  #
+  # Default skip_cols by format:
+  #   HALO,   no nuclear markers   : drop HALO metadata + per-compartment cols
+  #   HALO,   with nuclear markers : drop HALO metadata only (compartment cols
+  #                                  are disambiguated by phenomenalist.preprocess)
+  #   Mesmer                       : drop common blank / DAPI / channel-number cols
+  #   QuPath                       : drop object metadata (Image, Name, Class,
+  #                                  Parent, ROI), centroid columns, shape
+  #                                  descriptors (Area, Perimeter, Circularity,
+  #                                  Solidity, Caliper, Eccentricity, diameter),
+  #                                  summary counts, and DAPI
+  # failed.markers are appended to the regex in all cases.
+  # ---------------------------------------------------------------------------
+  if (is.null(skip_cols)) {
+    fmt <- .detect_segmentation_format(segmentation_file)
+    message(glue("Detected segmentation format: {fmt}"))
+    skip_cols <- switch(
+      fmt,
+      halo   = if (is.null(nuclear.markers)) {
+                 "Classification|Completeness|Cytoplasm|Nucleus|Membrane|DAPI"
+               } else {
+                 "Classification|Completeness|Membrane"
+               },
+      mesmer = "Blank|blank|DAPI|Ch",
+      qupath = paste0(
+        # Object metadata (top-level exact-name columns).
+        "^Image$|^Object ID$|^Name$|^Class$|^Parent$|^ROI$|",
+        # Summary counts.
+        "Num detections|",
+        # Shape / morphometric descriptors. NOTE: "Centroid" is deliberately
+        # NOT filtered here — the centroid columns must survive this step so
+        # create_object.mod can rename them to x/y downstream.
+        "Area|Perimeter|Circularity|Solidity|Caliper|Eccentricity|diameter|",
+        # Nuclear counterstain.
+        "DAPI"
+      )
+    )
+  } else {
+    message(glue("Using user-supplied skip_cols: {skip_cols}"))
   }
-  
-  
-  
-  
-  
-  
-  
-  
+  if (length(failed.markers) > 0) {
+    skip_cols <- paste0(skip_cols, "|", paste(failed.markers, collapse = "|"))
+  }
+
   labels.files=unlist(strsplit(data_loc,'[/]'))[length(unlist(strsplit(data_loc,'[/]')))]
   label=unlist(strsplit(labels.files,'.csv'))[1]
-  
-  
-  
+
   # by default NULL:
-  expression.columns=phenomenalist.preprocess(segmentation_file,failed.markers = failed.markers,nuclear.markers = nuclear.markers,HALO = HALO,else.cytoplasm = else_cytoplasm)
+  expression.columns=phenomenalist.preprocess(segmentation_file,failed.markers = failed.markers,nuclear.markers = nuclear.markers,else.cytoplasm = else_cytoplasm)
   message(expression.columns)
   print(expression.columns)
   if(length(expression.columns) == 0){
-	
+
 	expression.columns=NULL
 
-  }  
-  if(!HALO){
-    skip_cols=paste0(c(basic_skip_cols,'Ch'),collapse = '|')
-    if(length(failed.markers)>0){
-      skip_cols=paste0(skip_cols,'|')
-      skip_cols=paste0(skip_cols,paste(failed.markers,collapse = '|'),collapse = '|')
-    }
-    
-    # if(length(data_loc)==1){
-    #   data_csv=data_loc
-    #   print(data_csv)
-    #   x <- data.table::fread(data_csv, stringsAsFactors = FALSE, data.table = FALSE)
-    #   expression.columns=colnames(x)[seq(6,dim(x)[2])]
-    #   expression.columns=expression.columns[!str_detect(expression.columns,skip_cols)]
-    # }
-  }else{
-    skip_cols=halo_skip_cols
   }
   
   

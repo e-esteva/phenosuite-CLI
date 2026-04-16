@@ -471,12 +471,22 @@ create_object.mod=function (x, expression_cols = NULL, metadata_cols = NULL, ski
       x <- janitor::clean_names(x, case = "none")
       
       # adjust common column names
+      #
+      # QuPath exports centroid columns as space-delimited names with an optional
+      # unit suffix: "Centroid X µm" | "Centroid X px" | "Centroid X". After
+      # janitor::clean_names(case="none") the space delimiters become underscores
+      # AND the micro symbol µ is mangled to 'm' (not 'u'), producing any of:
+      #   Centroid_X, Centroid_X_px, Centroid_X_pixels, Centroid_X_mm (← µm),
+      #   Centroid_X_um, Centroid_X_µm.
+      # Match all variants with a single regex.
       if (!"x" %in% names(x)) {
         names(x)[names(x) == "X"] <- "x"
         names(x)[names(x) == "X_X"] <- "x"
         names(x)[names(x) == "CtrX"] <- "x"
-        names(x)[names(x) == "Centroid_X_px"] <- "x"
-        names(x)[names(x) == "Centroid_X"] <- "x"
+        qupath_x <- grep("^Centroid_X(_[^_]+)?$", names(x), value = TRUE)
+        if (length(qupath_x) > 0) {
+          names(x)[names(x) == qupath_x[1]] <- "x"
+        }
 
         if (all(c("XMin", "XMax") %in% names(x))) {
           x$x <- (x$XMin + x$XMax) / 2
@@ -489,8 +499,10 @@ create_object.mod=function (x, expression_cols = NULL, metadata_cols = NULL, ski
         names(x)[names(x) == "Y"] <- "y"
         names(x)[names(x) == "Y_Y"] <- "y"
         names(x)[names(x) == "CtrY"] <- "y"
-        names(x)[names(x) == "Centroid_Y_px"] <- "y"
-        names(x)[names(x) == "Centroid_Y"] <- "y"
+        qupath_y <- grep("^Centroid_Y(_[^_]+)?$", names(x), value = TRUE)
+        if (length(qupath_y) > 0) {
+          names(x)[names(x) == qupath_y[1]] <- "y"
+        }
 
         if (all(c("YMin", "YMax") %in% names(x))) {
           x$y <- (x$YMin + x$YMax) / 2
@@ -684,10 +696,57 @@ cluster.mod=function (x, method = c("leiden"), resolution = 1, n_neighbors = 50,
   return(x)
 }
 
-phenomenalist.preprocess=function(x,failed.markers=NULL,nuclear.markers=NULL,else.cytoplasm=F,HALO=T){
+# ---------------------------------------------------------------------------
+# .detect_segmentation_format(x)
+#
+# Inspects the column headers of a segmentation CSV (path or already-loaded
+# data.frame) and returns one of:
+#   "qupath" — QuPath-style table with space-delimited "Centroid X [µm|px]"
+#              columns and/or colon-separated per-compartment mean columns
+#              (e.g. "CD3: Cell: Mean").
+#   "halo"   — HALO-style table with "<marker> Cell/Nucleus/Cytoplasm Intensity"
+#              columns and/or HALO metadata columns (Classification, Completeness).
+#   "mesmer" — Mesmer-style table with a (label, y, x[, size, *_min/*_max])
+#              header block followed by bare marker columns.
+#
+# QuPath is checked first because QuPath exports may contain substrings that
+# would otherwise trip HALO heuristics (e.g. "Cell" in "CD3: Cell: Mean").
+#
+# If no fingerprint matches, emits a warning and falls back to "halo" (the
+# historical default). Users can bypass detection by passing an explicit
+# skip_cols regex to RunPhenomenalist().
+# ---------------------------------------------------------------------------
+.detect_segmentation_format <- function(x) {
+  if (is.character(x) && length(x) == 1) {
+    hdr <- data.table::fread(x, nrows = 0)
+    cols <- names(hdr)
+  } else if (is.data.frame(x)) {
+    cols <- names(x)
+  } else {
+    cols <- as.character(x)
+  }
+  # QuPath: space-delimited "Centroid X [µm|px|<unit>]" or colon-separated means.
+  qupath_centroid <- any(grepl("^Centroid\\s+[XY](\\s|$)", cols, perl = TRUE))
+  qupath_mean     <- any(grepl(":\\s*(Cell|Nucleus|Cytoplasm|Membrane)\\s*:\\s*Mean",
+                               cols, perl = TRUE))
+  if (qupath_centroid || qupath_mean) return("qupath")
+  # HALO: "<marker> Cell Intensity", etc., and/or HALO metadata.
+  halo_hits <- grepl("(?i)(Cell|Nucleus|Cytoplasm|Membrane)[ .]Intensity|Classification|Completeness",
+                     cols, perl = TRUE)
+  if (any(halo_hits)) return("halo")
+  # Mesmer: bare label/y/x header block.
+  mesmer_base <- c("label", "y", "x")
+  if (all(mesmer_base %in% cols)) return("mesmer")
+  warning("Could not auto-detect segmentation format from column names; ",
+          "assuming HALO. Pass skip_cols=<regex> to override.")
+  "halo"
+}
+
+phenomenalist.preprocess=function(x,failed.markers=NULL,nuclear.markers=NULL,else.cytoplasm=F){
   if(is.null(failed.markers) & is.null(nuclear.markers)){
     return(NULL)
   }else{
+    HALO <- identical(.detect_segmentation_format(x), "halo")
     if(HALO){
       if(is.null(nuclear.markers)){
         # FIX: nrows=0 — only the header is needed to resolve column names.

@@ -10,19 +10,25 @@
 #       Rscript run-phenomenalist.R \
 #           --segmentation-file=PATH \
 #           --out-dir=DIR \
-#           [--halo=T|F] \
 #           [--failed-markers=LIST] \
 #           [--nuclear-markers=LIST] \
 #           [--classifier-label=LIST] \
 #           [--clustering-res=SPEC] \
 #           [--max-cells=N] \
-#           [--phenotyping-template=PATH]
+#           [--phenotyping-template=PATH] \
+#           [--skip-cols=REGEX]
 #
 #   (2) Positional (legacy, for run-phenomenalist.s back-compat):
 #       Rscript run-phenomenalist.R \
 #           <segmentation_file> <failed_markers> <nuclear_markers> \
-#           <HALO> <out_dir> <clustering_res> <classifier_label> \
+#           <out_dir> <clustering_res> <classifier_label> \
 #           <max_cells> <phenotyping_template>
+#
+# Segmentation format (HALO / Mesmer / QuPath) is auto-detected from the
+# column headers; QuPath centroid variants ("Centroid X µm", "Centroid X px",
+# "Centroid X") are all resolved to x/y automatically. Pass --skip-cols to
+# override the column-filter regex for custom schemas or when auto-detection
+# picks wrong.
 #
 # Run with --help for details.
 
@@ -33,16 +39,17 @@
 usage_text <- function() {
 "Usage:
   Rscript run-phenomenalist.R --segmentation-file=PATH --out-dir=DIR [options]
-  Rscript run-phenomenalist.R <seg> <failed> <nuclear> <HALO> <out> <res> <label> <max> <template>
+  Rscript run-phenomenalist.R <seg> <failed> <nuclear> <out> <res> <label> <max> <template>
 
 Runs the RunPhenomenalist phenotyping + clustering pipeline on one segmentation file.
+Segmentation format (HALO / Mesmer / QuPath) is auto-detected from the column headers.
+QuPath centroid variants ('Centroid X µm', 'Centroid X px', 'Centroid X') all resolve to x/y.
 
 Required:
   --segmentation-file=PATH    Per-cell segmentation CSV / TSV / TSV.gz.
   --out-dir=DIR               Output directory (created if missing).
 
 Options:
-  --halo=T|F                  HALO (T) vs Mesmer (F) segmentation format. [default: T]
   --failed-markers=LIST       Comma-separated markers to drop.        [default: none]
   --nuclear-markers=LIST      Comma-separated nuclear markers.        [default: none]
   --classifier-label=LIST     Comma-separated classifier labels.      [default: none]
@@ -52,6 +59,10 @@ Options:
                               [default: 1,2]
   --max-cells=N               Cell subsample threshold.               [default: 100000]
   --phenotyping-template=PATH Manual-gating template CSV.             [default: none]
+  --skip-cols=REGEX           Override the column-filter regex used to exclude
+                              non-marker columns. Use this when the segmentation
+                              schema is non-standard or auto-detection is wrong.
+                                                                      [default: auto]
   -h, --help                  Show this help and exit.
 
 Sentinels that all mean 'not set' for any option value:
@@ -110,13 +121,6 @@ parse_res <- function(x) {
   vals
 }
 
-parse_logical <- function(x, flag) {
-  v <- trimws(toupper(as.character(x)))
-  if (v %in% c("T", "TRUE", "1", "YES", "Y"))  return(TRUE)
-  if (v %in% c("F", "FALSE", "0", "NO", "N")) return(FALSE)
-  die(flag, " must be T/F (got '", x, "')")
-}
-
 parse_numeric <- function(x, flag) {
   v <- suppressWarnings(as.numeric(x))
   if (is.na(v)) die(flag, " must be numeric (got '", x, "')")
@@ -156,24 +160,24 @@ opts <- list(
   segmentation_file    = NULL,
   failed_markers       = NULL,
   nuclear_markers      = NULL,
-  halo                 = "T",
   out_dir              = NULL,
   clustering_res       = "1,2",
   classifier_label     = NULL,
   max_cells            = "100000",
-  phenotyping_template = NULL
+  phenotyping_template = NULL,
+  skip_cols            = NULL
 )
 
 flag_slot <- list(
   "--segmentation-file"    = "segmentation_file",
   "--failed-markers"       = "failed_markers",
   "--nuclear-markers"      = "nuclear_markers",
-  "--halo"                 = "halo",
   "--out-dir"              = "out_dir",
   "--clustering-res"       = "clustering_res",
   "--classifier-label"     = "classifier_label",
   "--max-cells"            = "max_cells",
-  "--phenotyping-template" = "phenotyping_template"
+  "--phenotyping-template" = "phenotyping_template",
+  "--skip-cols"            = "skip_cols"
 )
 
 has_flags <- any(grepl("^--", raw))
@@ -200,18 +204,17 @@ if (has_flags) {
     opts[[slot]] <- val
   }
 } else {
-  if (length(raw) != 9) {
-    die("positional form requires exactly 9 args; got ", length(raw), ". Run with --help.")
+  if (length(raw) != 8) {
+    die("positional form requires exactly 8 args; got ", length(raw), ". Run with --help.")
   }
   opts$segmentation_file    <- raw[1]
   opts$failed_markers       <- raw[2]
   opts$nuclear_markers      <- raw[3]
-  opts$halo                 <- raw[4]
-  opts$out_dir              <- raw[5]
-  opts$clustering_res       <- raw[6]
-  opts$classifier_label     <- raw[7]
-  opts$max_cells            <- raw[8]
-  opts$phenotyping_template <- raw[9]
+  opts$out_dir              <- raw[4]
+  opts$clustering_res       <- raw[5]
+  opts$classifier_label     <- raw[6]
+  opts$max_cells            <- raw[7]
+  opts$phenotyping_template <- raw[8]
 }
 
 ## ---------------------------------------------------------------------------
@@ -229,13 +232,13 @@ if (is_unset(opts$out_dir)) {
 }
 dir.create(opts$out_dir, showWarnings = FALSE, recursive = TRUE)
 
-halo                 <- parse_logical(opts$halo, "--halo")
 max_cells            <- parse_numeric(opts$max_cells, "--max-cells")
 clustering_res       <- parse_res(opts$clustering_res)
 failed_markers       <- parse_list(opts$failed_markers)
 nuclear_markers      <- parse_list(opts$nuclear_markers)
 classifier_label     <- parse_list(opts$classifier_label)
 phenotyping_template <- if (is_unset(opts$phenotyping_template)) NULL else opts$phenotyping_template
+skip_cols            <- if (is_unset(opts$skip_cols)) NULL else as.character(opts$skip_cols)
 
 if (!is.null(phenotyping_template) && !file.exists(phenotyping_template)) {
   die("phenotyping template not found: ", phenotyping_template)
@@ -248,13 +251,13 @@ show <- function(label, value) {
 message("== RunPhenomenalist config ==")
 show("segmentation_file",    opts$segmentation_file)
 show("out_dir",              opts$out_dir)
-show("HALO",                 halo)
 show("max_cells",            max_cells)
 show("clustering_res",       clustering_res)
 show("failed_markers",       failed_markers)
 show("nuclear_markers",      nuclear_markers)
 show("classifier_label",     classifier_label)
 show("phenotyping_template", phenotyping_template)
+show("skip_cols",            skip_cols)
 message("=============================")
 
 ## ---------------------------------------------------------------------------
@@ -310,11 +313,11 @@ RunPhenomenalist(
   segmentation_file    = opts$segmentation_file,
   failed.markers       = failed_markers,
   nuclear.markers      = nuclear_markers,
-  HALO                 = halo,
   out_dir              = opts$out_dir,
   clustering_res       = clustering_res,
   classifier_label     = classifier_label,
   max.cells            = max_cells,
   min.cells            = 10,
-  phenotyping_template = phenotyping_template
+  phenotyping_template = phenotyping_template,
+  skip_cols            = skip_cols
 )

@@ -19,8 +19,8 @@ classifier_labels=batch-inputs/labels.txt               # classifier labels per 
 # Pipeline parameters (global — apply to every sample in the batch)
 # ---------------------------------------------------------------------------
 max_cells=3000000                                       # subsample threshold
-HALO=T                                                  # T: HALO format, F: Mesmer format
 phenotyping_template=                                   # gating template CSV (leave blank for none)
+skip_cols=                                              # optional regex override (leave blank for auto-detect)
 
 # clustering_res accepts:
 #   '1,2,3'  -> explicit list  c(1, 2, 3)
