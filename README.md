@@ -568,3 +568,13 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 | masquerade run succeeds but no `.ome.tiff` is found at the end | The launcher locates the output by running `ls -t ${out_dir}/${base}*.ome.tiff` — wrong `out_dir` permissions or an unexpected `basename` will make it miss | Check the directory of `outPath` in [configFile-batch.txt](masquerade/configFile-batch.txt) and confirm [masquerade_interface.py](masquerade/masquerade_interface.py) wrote the file; see [run-masquerade-batch.sh:34-39](masquerade/run-masquerade-batch.sh) |
 | spatial-dynamics runs the wrong analysis | `module` set to `0` when you wanted `1`, or vice versa | Edit `module=` in [config-spatial_dynamics.txt](spatial-dynamics/config-spatial_dynamics.txt) |
 | `sbatch` rejects the job immediately | Partition name is site-specific (`a100_short`, `cpu_dev`) | Update every `*_partition` key in the configs and every `#SBATCH --partition=` header to match your cluster |
+
+---
+
+## License & Citation
+
+If you use phenosuite-CLI in your research, please cite it:
+
+> Esteva, E. (2026). phenosuite-CLI: Command-line interface for PhenoSuite spatial omics pipelines [Computer software]. GitHub. https://github.com/e-esteva/phenosuite-CLI
+
+A machine-readable citation is available in [`CITATION.cff`](CITATION.cff). GitHub will automatically render a "Cite this repository" button from it.

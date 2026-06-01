@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use phenosuite-CLI in your research, please cite it as below."
+title: "phenosuite-CLI: Command-Line Interface for PhenoSuite Spatial Omics Pipelines"
+type: software
+authors:
+  - family-names: Esteva
+    given-names: Eduardo
+    affiliation: "Translational Immunology Center (TrIC), New York University"
+repository-code: "https://github.com/e-esteva/phenosuite-CLI"
+url: "https://github.com/e-esteva/phenosuite-CLI"
+keywords:
+  - spatial-omics
+  - single-cell
+  - multiplexed-imaging
+  - CODEX
+  - HPC
+  - SLURM
+  - command-line
+  - bioinformatics
+date-released: "2026-04-15"
+abstract: >-
+  Command-line interface for the core PhenoSuite pipelines, designed to
+  run on SLURM-based HPC clusters. Bundles three independent
+  spatial-biology modules: RunPhenomenalist (cellular scaling,
+  dimensionality reduction, and clustering), masquerade (circular
+  cluster-mask generation for QuPath overlays), and spatial-dynamics
+  (pairwise log-odds and multi-cell-type neighborhood enrichment).
+references:
+  - type: software
+    title: "PhenoSuite: An Integrated Platform for Single-Cell Spatial Omics Analysis"
+    authors:
+      - family-names: Esteva
+        given-names: Eduardo
+    repository-code: "https://github.com/e-esteva/phenosuite"
+    year: 2026
