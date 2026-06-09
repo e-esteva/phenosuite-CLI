@@ -324,7 +324,7 @@ Every file in [RunPhenomenalist/batch-inputs/](RunPhenomenalist/batch-inputs/) h
 
 #### What it does
 
-Reads a multi-channel tissue image (OME-TIFF or QPTIFF, routinely 4+ GB), draws a circular mask (filled disk or ring) around every cell centroid in a spatial-annotation CSV, and emits a multi-channel OME-TIFF where each channel holds the mask for one cluster. The result drops straight into QuPath via its Bio-Formats reader for overlay visualization. Large outputs are automatically converted to tiled pyramidal OME-TIFF via the bundled `bfconvert`.
+Reads a multi-channel tissue image (OME-TIFF or QPTIFF, routinely 4+ GB), draws a circular mask (filled disk or ring) around every cell centroid in a spatial-annotation CSV, and emits a multi-channel OME-TIFF containing the original biomarker channels as well as dedicated discrete channels holding masks for all clusters. The result drops straight into QuPath via its Bio-Formats reader for overlay visualization. Large outputs are automatically converted to tiled pyramidal OME-TIFF via the bundled `bfconvert`.
 
 #### Inputs
 
