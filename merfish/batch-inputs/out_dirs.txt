@@ -1,0 +1,3 @@
+/gpfs/data/abl/tric/ee699/merfish/results/sampleA
+/gpfs/data/abl/tric/ee699/merfish/results/sampleB
+/gpfs/data/abl/tric/ee699/merfish/results/sampleC

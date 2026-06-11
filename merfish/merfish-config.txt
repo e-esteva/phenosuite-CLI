@@ -1,0 +1,87 @@
+# merfish-config.txt
+# ==================
+# Sourced by merfish-meta.s and run-merfish.s. Bash variable substitutions
+# (e.g. $(wc -l ...)) are evaluated at source time. Edit the values below, then
+# submit with:  sbatch merfish-meta.s
+#
+# Each per-sample list file holds one row per sample; row N across every list
+# is the same sample N. Pad any missing per-sample value with the literal
+# string 'NULL'.
+
+configFile=merfish-config.txt
+
+# ---------------------------------------------------------------------------
+# Batch inputs (one row per sample)
+# ---------------------------------------------------------------------------
+expression_file=batch-inputs/expression_files.txt   # cell x gene matrix per sample (CSV/TSV/.gz)
+metadata_file=batch-inputs/metadata_files.txt       # per-cell metadata per sample (CSV/TSV/.gz)
+out_dir=batch-inputs/out_dirs.txt                    # output directory per sample
+sample_id=batch-inputs/sample_ids.txt               # output filename prefix per sample (optional; 'NULL' -> out_dir basename)
+
+# ---------------------------------------------------------------------------
+# Coordinate + metadata column mapping (global — must exist in every metadata file)
+# ---------------------------------------------------------------------------
+x_col=center_x                                       # metadata column: cell X coordinate
+y_col=center_y                                       # metadata column: cell Y coordinate
+area_col=cell_area                                   # cell area/volume column (NULL to disable area/density QC)
+negctrl_col=blank_counts                             # blank / negative-control count column (NULL to disable)
+vol_col=cell_area                                    # cell volume column for cellvol normalization
+transpose=FALSE                                      # TRUE if expression matrices are genes x cells
+
+# ---------------------------------------------------------------------------
+# QC thresholds (global). Set any to NULL to disable that filter.
+# ---------------------------------------------------------------------------
+qc_min_counts=10
+qc_max_counts=50000
+qc_min_genes=5
+qc_max_genes=2000
+qc_min_area=NULL
+qc_max_area=NULL
+qc_min_density=NULL
+qc_max_density=NULL
+qc_max_negctrl_ratio=0.05
+
+# ---------------------------------------------------------------------------
+# Processing parameters (global)
+# ---------------------------------------------------------------------------
+norm_method=lognorm                                  # lognorm | cp10k | cellvol | sct | none
+scale_method=zscore                                  # zscore | center | none
+hvg_method=variance                                  # variance | vst | all
+n_hvg=2000
+n_pcs=20
+umap_neighbors=15
+umap_min_dist=0.3
+
+# ---------------------------------------------------------------------------
+# Clustering parameters (global)
+# ---------------------------------------------------------------------------
+cluster_k=15
+cluster_res=0.8
+leiden_objective=modularity                          # modularity | CPM
+
+# ---------------------------------------------------------------------------
+# Spatial + DE parameters (global)
+# ---------------------------------------------------------------------------
+nhood_k=15
+svg_k=10
+svg_n_top=200
+
+# ---------------------------------------------------------------------------
+# Export parameters (global)
+# ---------------------------------------------------------------------------
+export_spe=TRUE
+export_figures=TRUE
+fig_width=8
+fig_height=6
+fig_dpi=300
+seed=42
+
+# ---------------------------------------------------------------------------
+# SLURM parameters for the array job
+# ---------------------------------------------------------------------------
+batch_size=$(wc -l < ${expression_file})             # auto-computed from the primary list
+module1_Path=run-merfish.s                           # array-task launcher (in this dir)
+module1_cpus=4                                        # CPUs per task
+module1_mem=100GB                                     # memory per task
+module1_time=0-06                                     # wall time (D-HH)
+module1_partition=a100_short                          # SLURM partition (site-specific)
