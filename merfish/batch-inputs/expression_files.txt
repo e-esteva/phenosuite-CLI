@@ -1,0 +1,3 @@
+/gpfs/data/abl/tric/ee699/merfish/sampleA/cell_by_gene.csv.gz
+/gpfs/data/abl/tric/ee699/merfish/sampleB/cell_by_gene.csv.gz
+/gpfs/data/abl/tric/ee699/merfish/sampleC/cell_by_gene.csv.gz

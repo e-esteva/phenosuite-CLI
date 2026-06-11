@@ -1,0 +1,32 @@
+name: runmerfish
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  # R runtime
+  - r-base=4.1
+
+  # Core analysis (QC / normalize / PCA / UMAP-init / Leiden / spatial stats)
+  - r-matrix
+  - r-rann
+  - r-igraph
+  - r-rspectra        # spectral UMAP initialization (optional; cmdscale fallback)
+  - r-data.table      # fast gz-aware table reader (optional; base read.delim fallback)
+
+  # Figures
+  - r-ggplot2
+  - r-viridis
+  - r-rcolorbrewer
+  - r-pheatmap
+
+  # Export / provenance
+  - r-jsonlite
+  - bioconductor-spatialexperiment
+  - bioconductor-singlecellexperiment
+  - bioconductor-summarizedexperiment
+  - bioconductor-s4vectors
+
+# Create + activate with:
+#   conda env create -f environment.yml
+#   conda activate runmerfish
