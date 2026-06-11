@@ -1,10 +1,11 @@
 # phenosuite-CLI
 
-Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles three independent spatial-biology modules that operate on multiplexed tissue imaging data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations):
+Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles four independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
 
 - **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
 - **[masquerade](masquerade/)** — circular cluster-mask generation for QuPath overlays on OME-TIFF / QPTIFF images (Python).
 - **[spatial-dynamics](spatial-dynamics/)** — pairwise log-odds and multi-cell-type neighborhood enrichment for spatial cell–cell relationships (Python).
+- **[merfish](merfish/)** — headless MERFISH spatial-transcriptomics pipeline: QC, normalization, clustering, neighborhood enrichment, spatially variable genes, and differential expression from cell × gene matrices (R).
 
 Each module is a self-contained `sbatch`-driven array job: a config file declares parameters, line-aligned text files in `batch-inputs/` declare the samples, and one `sbatch …` command fans the batch out across array tasks.
 
@@ -19,6 +20,7 @@ Each module is a self-contained `sbatch`-driven array job: a config file declare
    - [RunPhenomenalist](#runphenomenalist)
    - [masquerade](#masquerade)
    - [spatial-dynamics](#spatial-dynamics)
+   - [merfish](#merfish)
 5. [Configuration reference](#configuration-reference)
 6. [Active vs. legacy files](#active-vs-legacy-files)
 7. [Run logs](#run-logs)
@@ -72,22 +74,38 @@ phenosuite-CLI/
 │   │   └── marker-metadata-batch.txt
 │   └── run-logs-batch/                       #   timestamped run logs (generated)
 │
-└── spatial-dynamics/                         # Python pipeline: PWLO + neighborhoods
-    ├── pwlo_es_pt.py                         #   pairwise log-odds implementation
-    ├── run-pwlo.py                           #   CLI wrapper for PWLO
-    ├── n_simplex_neighborhoods.py            #   n-way (3+ celltype) neighborhood enrichment
-    ├── getNeighborhoods.py                   #   wrapper orchestrating neighborhood analysis
-    ├── run-spatial_circuit-enrichment.py     #   CLI wrapper for circuit enrichment
-    ├── optimize-neighborhoods.py             #   threshold optimization + animation
-    ├── config-spatial_dynamics.txt           #   batch config (edit this)
-    ├── run-spatial_dynamics.s                #   SLURM entry point — `sbatch` this
-    ├── run-pwlo.s                            #   SLURM array task (module=0)
-    ├── run-spatial_circuit-enrichment.s      #   SLURM array task (module=1)
+├── spatial-dynamics/                         # Python pipeline: PWLO + neighborhoods
+│   ├── pwlo_es_pt.py                         #   pairwise log-odds implementation
+│   ├── run-pwlo.py                           #   CLI wrapper for PWLO
+│   ├── n_simplex_neighborhoods.py            #   n-way (3+ celltype) neighborhood enrichment
+│   ├── getNeighborhoods.py                   #   wrapper orchestrating neighborhood analysis
+│   ├── run-spatial_circuit-enrichment.py     #   CLI wrapper for circuit enrichment
+│   ├── optimize-neighborhoods.py             #   threshold optimization + animation
+│   ├── config-spatial_dynamics.txt           #   batch config (edit this)
+│   ├── run-spatial_dynamics.s                #   SLURM entry point — `sbatch` this
+│   ├── run-pwlo.s                            #   SLURM array task (module=0)
+│   ├── run-spatial_circuit-enrichment.s      #   SLURM array task (module=1)
+│   ├── batch-inputs/                         #   line-aligned per-sample inputs
+│   │   ├── spatial-annos.txt
+│   │   ├── outs.txt
+│   │   └── labels.txt
+│   └── *-v0.R, *-v1.R, optimize-neighborhoods.R   # legacy R implementations (archived)
+│
+└── merfish/                                  # R pipeline: MERFISH spatial transcriptomics
+    ├── RunMerfish.R                          #   core pipeline orchestrator
+    ├── run-merfish.R                         #   CLI wrapper (named flags; standalone-runnable)
+    ├── merfish-utils.R                       #   QC / normalize / PCA / UMAP / Leiden / spatial-stats / DE / figures
+    ├── merfish-config.txt                    #   batch config (edit this)
+    ├── merfish-meta.s                        #   SLURM entry point — `sbatch` this
+    ├── run-merfish.s                         #   SLURM array task (called by meta)
+    ├── environment.yml                       #   conda env spec (r-base=4.1 + deps)
+    ├── makeRunLog-batch.sh                   #   captures config + input lists per run
     ├── batch-inputs/                         #   line-aligned per-sample inputs
-    │   ├── spatial-annos.txt
-    │   ├── outs.txt
-    │   └── labels.txt
-    └── *-v0.R, *-v1.R, optimize-neighborhoods.R   # legacy R implementations (archived)
+    │   ├── expression_files.txt
+    │   ├── metadata_files.txt
+    │   ├── out_dirs.txt
+    │   └── sample_ids.txt
+    └── run-logs-batch/                       #   timestamped run logs (generated)
 ```
 
 ---
@@ -151,6 +169,25 @@ conda env update -f environment.yml --prune
 ```
 
 The spec pins `python=3.10` and pulls `numpy`, `pandas`, `scipy`, `scikit-learn`, `matplotlib`, `seaborn`, `pillow` from `conda-forge`. See [spatial-dynamics/environment.yml](spatial-dynamics/environment.yml).
+
+### merfish
+
+Provision the shipped conda env (named `runmerfish`):
+
+```bash
+cd merfish/
+conda env create -f environment.yml
+conda activate runmerfish
+```
+
+What [environment.yml](merfish/environment.yml) pins:
+
+- `r-base=4.1`
+- Core analysis: `r-matrix`, `r-rann`, `r-igraph`, `r-rspectra` (spectral UMAP init; `cmdscale` fallback if absent), `r-data.table` (fast gz-aware reader; base `read.delim` fallback)
+- Figures: `r-ggplot2`, `r-viridis`, `r-rcolorbrewer`, `r-pheatmap`
+- Export / provenance: `r-jsonlite`, `bioconductor-spatialexperiment`, `bioconductor-singlecellexperiment`, `bioconductor-summarizedexperiment`, `bioconductor-s4vectors`
+
+Unlike RunPhenomenalist, no external GitHub package is required — the pipeline ships entirely in `merfish/`. The `run-merfish.s` launcher runs `module load r/4.1.2` (site-specific); on a conda-only system, remove that line and `conda activate runmerfish` before `sbatch`.
 
 ---
 
@@ -217,6 +254,35 @@ vi batch-inputs/outs.txt
 vi batch-inputs/labels.txt
 # 3. Submit
 sbatch run-spatial_dynamics.s
+```
+
+### merfish
+
+```bash
+cd merfish/
+# 1. Edit merfish-config.txt (column mappings, QC/clustering params, SLURM params)
+vi merfish-config.txt
+# 2. Populate batch-inputs/ — one line per sample in each file; use 'NULL' for empty rows
+vi batch-inputs/expression_files.txt
+vi batch-inputs/metadata_files.txt
+vi batch-inputs/out_dirs.txt
+vi batch-inputs/sample_ids.txt
+# 3. Submit. merfish-meta.s pre-validates that every batch-inputs file
+#    has >= batch_size rows before calling sbatch.
+sbatch merfish-meta.s
+```
+
+To run the underlying CLI on a single sample outside of SLURM (useful for debugging):
+
+```bash
+Rscript run-merfish.R --help
+Rscript run-merfish.R \
+    --expression-file=/data/sampleA/cell_by_gene.csv.gz \
+    --metadata-file=/data/sampleA/cell_metadata.csv.gz \
+    --out-dir=/data/results/sampleA \
+    --sample-id=sampleA \
+    --x-col=center_x --y-col=center_y \
+    --area-col=cell_area --negctrl-col=blank_counts
 ```
 
 ---
@@ -430,6 +496,101 @@ Line-aligned, one row per sample across every file in [spatial-dynamics/batch-in
 
 ---
 
+### merfish
+
+#### What it does
+
+Headless port of the PhenoSuite MERFISH module (`phenosuite/merfish/app.R`). Reads a per-sample cell × gene expression matrix and a matching cell-metadata table (with spatial coordinates) and runs the full segmentation-based spatial-transcriptomics workflow unattended, one sample per array task:
+
+```
+Import → QC → Normalize → HVG → PCA → UMAP → Leiden cluster →
+Neighborhood enrichment → Spatially variable genes (Moran's I) → Cluster markers → Export
+```
+
+It emits cluster assignments, normalized expression, spatial statistics, figures, a full-provenance run manifest, and a `SpatialExperiment` `.rds` that drops straight into downstream PhenoSuite modules (phenotyping, PCF, spatial-interaction).
+
+#### Inputs
+
+- **Expression matrix** (CSV / TSV / `.gz`): cells × genes, first column = cell ID. Set `transpose=TRUE` in the config if your matrices are genes × cells.
+- **Cell metadata** (CSV / TSV / `.gz`): first column = cell ID (used to align with the expression matrix), plus the X/Y coordinate columns named in the config and any optional area / negative-control / volume columns.
+
+#### Outputs
+
+Written under each `${out_dir}`, prefixed with `<sample_id>_`:
+
+| File | Contents |
+|---|---|
+| `metadata_clusters.csv` | cell metadata + `cluster`, `Phenotype`, UMAP coordinates |
+| `normalized_expression.csv` | normalized cell × gene matrix |
+| `cluster_markers.csv` | one-vs-rest Wilcoxon markers per cluster |
+| `svg.csv` | spatially variable genes (Moran's I, BH-adjusted p) |
+| `neighborhood_enrichment.csv` | cluster × cluster co-localization Z-scores |
+| `spe.rds` | `SpatialExperiment` (assays `exprs`/`logcounts`/`counts`, `UMAP`/`PCA` reducedDims, `Phenotype` colData) |
+| `figures/*.pdf` | QC violin, spatial clusters, UMAP clusters |
+| `run_manifest.json` | inputs, parameters, counts, timing, git SHA — full provenance |
+
+#### Entry point and orchestration
+
+`sbatch merfish-meta.s` reads [merfish-config.txt](merfish/merfish-config.txt), validates that every `batch-inputs/*.txt` file has at least `batch_size` rows (submission aborts with a clear error otherwise), and submits [run-merfish.s](merfish/run-merfish.s) as an array job sized `1..batch_size`. Each array task extracts its row from every list with `sed -n "${SLURM_ARRAY_TASK_ID}p"` and invokes the CLI with named flags built from the config:
+
+```bash
+Rscript run-merfish.R \
+    --expression-file="${expression_file_tmp}" \
+    --metadata-file="${metadata_file_tmp}" \
+    --out-dir="${out_dir_tmp}" \
+    --sample-id="${sample_id_tmp}" \
+    --x-col="${x_col}" --y-col="${y_col}" \
+    --norm-method="${norm_method}" \
+    --cluster-k="${cluster_k}" --cluster-res="${cluster_res}" \
+    …  # full QC / processing / spatial / export options from the config
+```
+
+Key option groups (run `Rscript run-merfish.R --help` for the complete list):
+
+```
+Required:
+  --expression-file=PATH   cell × gene matrix (first col = cell ID)
+  --metadata-file=PATH     per-cell metadata (first col = cell ID)
+  --out-dir=DIR            output directory (created if missing)
+  --x-col=COL --y-col=COL  metadata coordinate columns
+
+QC:        --qc-min/max-counts, --qc-min/max-genes, --area-col, --qc-min/max-area,
+           --qc-min/max-density, --negctrl-col, --qc-max-negctrl-ratio
+Process:   --norm-method (lognorm|cp10k|cellvol|sct|none), --vol-col, --scale-method,
+           --hvg-method (variance|vst|all), --n-hvg, --n-pcs, --umap-neighbors, --umap-min-dist
+Cluster:   --cluster-k, --cluster-res, --leiden-objective (modularity|CPM)
+Spatial:   --nhood-k, --svg-k, --svg-n-top
+Export:    --export-spe, --export-figures, --fig-width/height/dpi, --seed
+Other:     --transpose (genes × cells input), --sample-id, -h/--help
+```
+
+Sentinels that all mean *not set* for any numeric option: `NULL`, `null`, `NA`, `none`, `None`, `''` (empty). That makes every row of every `batch-inputs/*.txt` file safe to pad with `NULL`. `run-merfish.R` is fully standalone-runnable, so you can debug a single sample on a login/dev node without SLURM.
+
+One environment variable controls local sibling-file discovery:
+
+| Variable | Meaning |
+|---|---|
+| `MERFISH_DIR` | Directory holding `RunMerfish.R` and `merfish-utils.R`. Auto-detected from the script location; override only if you've split the files. |
+
+`merfish-meta.s` and `run-merfish.s` both set `MERFISH_DIR` to their own directory automatically.
+
+#### batch-inputs/ format
+
+Every file in [merfish/batch-inputs/](merfish/batch-inputs/) holds **one row per sample**, and row N must describe the same sample across all files. Use the literal string `NULL` for a row with no value.
+
+| File | Contents | Example row |
+|---|---|---|
+| `expression_files.txt` | absolute path to cell × gene matrix | `/data/sampleA/cell_by_gene.csv.gz` |
+| `metadata_files.txt` | absolute path to per-cell metadata | `/data/sampleA/cell_metadata.csv.gz` |
+| `out_dirs.txt` | output directory (created if missing) | `/data/results/sampleA` |
+| `sample_ids.txt` | output filename prefix, or `NULL` (→ out_dir basename) | `sampleA` |
+
+The coordinate / area / negative-control / volume **column names** are global (set once in the config) and must exist in every sample's metadata file. `batch_size=$(wc -l < ${expression_file})` picks up the line count automatically.
+
+**To add a sample:** append one line to each file above.
+
+---
+
 ## Configuration reference
 
 Every config file is just a shell-sourced `KEY=value` file — the launchers `source` it, so bash substitutions like `$(wc -l …)` work and absolute paths must be quoted if they contain spaces.
@@ -519,6 +680,57 @@ spatial_dynamics_meta_partition=a100_short                  # SLURM partition (s
 pwlo_module_Path=`pwd`/run-pwlo.s                           # path to PWLO array-task launcher
 ```
 
+### [merfish/merfish-config.txt](merfish/merfish-config.txt)
+
+```bash
+configFile=merfish-config.txt
+
+# Batch-input file paths (line-aligned; row N = sample N)
+expression_file=batch-inputs/expression_files.txt   # per-sample cell × gene matrix paths
+metadata_file=batch-inputs/metadata_files.txt       # per-sample cell-metadata paths
+out_dir=batch-inputs/out_dirs.txt                    # per-sample output directories
+sample_id=batch-inputs/sample_ids.txt               # per-sample output prefix (NULL → out_dir basename)
+
+# Column mapping (global — must exist in every metadata file)
+x_col=center_x                # cell X coordinate column
+y_col=center_y                # cell Y coordinate column
+area_col=cell_area            # cell area/volume column (NULL to disable area/density QC)
+negctrl_col=blank_counts      # blank / negative-control count column (NULL to disable)
+vol_col=cell_area             # cell volume column for cellvol normalization
+transpose=FALSE               # TRUE if expression matrices are genes × cells
+
+# QC thresholds (set any to NULL to disable that filter)
+qc_min_counts=10              ; qc_max_counts=50000
+qc_min_genes=5                ; qc_max_genes=2000
+qc_min_area=NULL              ; qc_max_area=NULL
+qc_min_density=NULL           ; qc_max_density=NULL
+qc_max_negctrl_ratio=0.05
+
+# Processing
+norm_method=lognorm           # lognorm | cp10k | cellvol | sct | none
+scale_method=zscore           # zscore | center | none
+hvg_method=variance           # variance | vst | all
+n_hvg=2000 ; n_pcs=20 ; umap_neighbors=15 ; umap_min_dist=0.3
+
+# Clustering
+cluster_k=15 ; cluster_res=0.8 ; leiden_objective=modularity   # modularity | CPM
+
+# Spatial + DE
+nhood_k=15 ; svg_k=10 ; svg_n_top=200
+
+# Export
+export_spe=TRUE ; export_figures=TRUE
+fig_width=8 ; fig_height=6 ; fig_dpi=300 ; seed=42
+
+# SLURM parameters
+batch_size=$(wc -l < ${expression_file})   # auto-computed from the primary list
+module1_Path=run-merfish.s                 # path to array-task launcher
+module1_cpus=4                             # CPUs per array task
+module1_mem=100GB                          # memory per array task
+module1_time=0-06                          # wall time (D-HH)
+module1_partition=a100_short               # SLURM partition (site-specific)
+```
+
 ---
 
 ## Active vs. legacy files
@@ -542,6 +754,7 @@ Each module ships a `makeRunLog-batch.sh` that creates a timestamped file in `ru
 
 - [RunPhenomenalist/makeRunLog-batch.sh](RunPhenomenalist/makeRunLog-batch.sh) — invoke manually after a run; writes to [RunPhenomenalist/run-logs-batch/](RunPhenomenalist/run-logs-batch/).
 - [masquerade/makeRunLog-batch.sh](masquerade/makeRunLog-batch.sh) — called automatically at the end of [run-masquerade-batch.sh](masquerade/run-masquerade-batch.sh:73); writes to [masquerade/run-logs-batch/](masquerade/run-logs-batch/).
+- [merfish/makeRunLog-batch.sh](merfish/makeRunLog-batch.sh) — invoke manually before/after a run; writes to `merfish/run-logs-batch/`.
 
 SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch` from.
 
