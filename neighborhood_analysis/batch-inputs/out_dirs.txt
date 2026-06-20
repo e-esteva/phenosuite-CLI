@@ -1,0 +1,2 @@
+/path/to/output/cohort1
+/path/to/output/cohort2

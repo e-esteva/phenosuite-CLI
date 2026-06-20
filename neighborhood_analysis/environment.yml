@@ -1,0 +1,37 @@
+name: neighborhoodr
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  # R runtime
+  - r-base=4.4
+
+  # CRAN packages
+  - r-dplyr
+  - r-ggplot2
+  - r-glue
+  - r-jsonlite
+  - r-rann
+  - r-scales
+  - r-tidyr
+
+  # Bioconductor packages
+  - bioconductor-singlecellexperiment
+  - bioconductor-spatialexperiment
+  - bioconductor-summarizedexperiment
+  - bioconductor-matrixgenerics
+
+  # reticulate (Python bridge)
+  - r-reticulate
+
+  # Python — activates the faster sklearn/scipy backend automatically
+  - python=3.11
+  - numpy<2
+  - scipy
+  - scikit-learn
+  - psutil          # optional: enables live memory monitoring in logs
+
+# After env creation:
+#   conda activate neighborhoodr
+#   Rscript -e 'install.packages(c("RANN","scales","jsonlite"), repos="https://cloud.r-project.org")'

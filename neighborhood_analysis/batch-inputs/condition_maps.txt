@@ -1,0 +1,2 @@
+sample1=treated,sample2=control,sample3=control
+NULL
