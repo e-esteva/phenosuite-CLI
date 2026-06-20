@@ -1,11 +1,12 @@
 # phenosuite-CLI
 
-Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles four independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
+Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles five independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
 
 - **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
 - **[masquerade](masquerade/)** — circular cluster-mask generation for QuPath overlays on OME-TIFF / QPTIFF images (Python).
 - **[spatial-dynamics](spatial-dynamics/)** — pairwise log-odds and multi-cell-type neighborhood enrichment for spatial cell–cell relationships (Python).
 - **[merfish](merfish/)** — headless MERFISH spatial-transcriptomics pipeline: QC, normalization, clustering, neighborhood enrichment, spatially variable genes, and differential expression from cell × gene matrices (R).
+- **[neighborhood_analysis](neighborhood_analysis/)** — KNN niche composition matrix, LOO stability sweep to select optimal neighbourhood count K₂, and MiniBatchKMeans assignment across multi-sample SpatialExperiment cohorts (R + Python).
 
 Each module is a self-contained `sbatch`-driven array job: a config file declares parameters, line-aligned text files in `batch-inputs/` declare the samples, and one `sbatch …` command fans the batch out across array tasks.
 
@@ -21,6 +22,7 @@ Each module is a self-contained `sbatch`-driven array job: a config file declare
    - [masquerade](#masquerade)
    - [spatial-dynamics](#spatial-dynamics)
    - [merfish](#merfish)
+   - [neighborhood_analysis](#neighborhood_analysis)
 5. [Configuration reference](#configuration-reference)
 6. [Active vs. legacy files](#active-vs-legacy-files)
 7. [Run logs](#run-logs)
@@ -91,20 +93,36 @@ phenosuite-CLI/
 │   │   └── labels.txt
 │   └── *-v0.R, *-v1.R, optimize-neighborhoods.R   # legacy R implementations (archived)
 │
-└── merfish/                                  # R pipeline: MERFISH spatial transcriptomics
-    ├── RunMerfish.R                          #   core pipeline orchestrator
-    ├── run-merfish.R                         #   CLI wrapper (named flags; standalone-runnable)
-    ├── merfish-utils.R                       #   QC / normalize / PCA / UMAP / Leiden / spatial-stats / DE / figures
-    ├── merfish-config.txt                    #   batch config (edit this)
-    ├── merfish-meta.s                        #   SLURM entry point — `sbatch` this
-    ├── run-merfish.s                         #   SLURM array task (called by meta)
-    ├── environment.yml                       #   conda env spec (r-base=4.1 + deps)
+├── merfish/                                  # R pipeline: MERFISH spatial transcriptomics
+│   ├── RunMerfish.R                          #   core pipeline orchestrator
+│   ├── run-merfish.R                         #   CLI wrapper (named flags; standalone-runnable)
+│   ├── merfish-utils.R                       #   QC / normalize / PCA / UMAP / Leiden / spatial-stats / DE / figures
+│   ├── merfish-config.txt                    #   batch config (edit this)
+│   ├── merfish-meta.s                        #   SLURM entry point — `sbatch` this
+│   ├── run-merfish.s                         #   SLURM array task (called by meta)
+│   ├── environment.yml                       #   conda env spec (r-base=4.1 + deps)
+│   ├── makeRunLog-batch.sh                   #   captures config + input lists per run
+│   ├── batch-inputs/                         #   line-aligned per-sample inputs
+│   │   ├── expression_files.txt
+│   │   ├── metadata_files.txt
+│   │   ├── out_dirs.txt
+│   │   └── sample_ids.txt
+│   └── run-logs-batch/                       #   timestamped run logs (generated)
+│
+└── neighborhood_analysis/                    # R pipeline: KNN niche + LOO sweep + neighbourhood assignment
+    ├── run-neighborhood_analysis.R           #   CLI wrapper (named flags + positional; standalone-runnable)
+    ├── neighborhood_analysis-utils.R         #   Python backend (sklearn KNN / MiniBatchKMeans) + R fallback + plot helpers
+    ├── neighborhood_analysis-config.txt      #   batch config (edit this)
+    ├── neighborhood_analysis-meta.s          #   SLURM entry point — `sbatch` this
+    ├── run-neighborhood_analysis.s           #   SLURM array task (called by meta)
     ├── makeRunLog-batch.sh                   #   captures config + input lists per run
-    ├── batch-inputs/                         #   line-aligned per-sample inputs
-    │   ├── expression_files.txt
-    │   ├── metadata_files.txt
+    ├── environment.yml                       #   conda env spec (r-base=4.4 + sklearn/scipy/numpy)
+    ├── batch-inputs/                         #   line-aligned per-run inputs
+    │   ├── rds_files.txt                     #     .rds SpatialExperiment paths (; within a run = multi-sample)
+    │   ├── celltype_cols.txt
     │   ├── out_dirs.txt
-    │   └── sample_ids.txt
+    │   ├── labels.txt
+    │   └── condition_maps.txt
     └── run-logs-batch/                       #   timestamped run logs (generated)
 ```
 
@@ -188,6 +206,25 @@ What [environment.yml](merfish/environment.yml) pins:
 - Export / provenance: `r-jsonlite`, `bioconductor-spatialexperiment`, `bioconductor-singlecellexperiment`, `bioconductor-summarizedexperiment`, `bioconductor-s4vectors`
 
 Unlike RunPhenomenalist, no external GitHub package is required — the pipeline ships entirely in `merfish/`. The `run-merfish.s` launcher runs `module load r/4.1.2` (site-specific); on a conda-only system, remove that line and `conda activate runmerfish` before `sbatch`.
+
+### neighborhood_analysis
+
+Provision the shipped conda env (named `neighborhoodr`):
+
+```bash
+cd neighborhood_analysis/
+conda env create -f environment.yml
+conda activate neighborhoodr
+```
+
+What [environment.yml](neighborhood_analysis/environment.yml) pins:
+
+- `r-base=4.4` + `r-reticulate`
+- CRAN: `r-dplyr`, `r-ggplot2`, `r-glue`, `r-jsonlite`, `r-rann`, `r-scales`, `r-tidyr`
+- Bioconductor: `SpatialExperiment`, `SingleCellExperiment`, `SummarizedExperiment`, `MatrixGenerics`
+- Python: `python=3.11`, `numpy<2`, `scipy`, `scikit-learn`, `psutil` (optional — enables memory logging)
+
+The Python packages activate the high-performance backend automatically at runtime. If sklearn / scipy / numpy are absent, the pipeline falls back silently to RANN (R KNN) + base `kmeans`. The `run-neighborhood_analysis.s` launcher runs `module load r/4.4.0` (site-specific); on a conda-only system, remove that line and `conda activate neighborhoodr` before `sbatch`.
 
 ---
 
@@ -283,6 +320,35 @@ Rscript run-merfish.R \
     --sample-id=sampleA \
     --x-col=center_x --y-col=center_y \
     --area-col=cell_area --negctrl-col=blank_counts
+```
+
+### neighborhood_analysis
+
+```bash
+cd neighborhood_analysis/
+# 1. Edit neighborhood_analysis-config.txt (K1, sweep range, SLURM params, etc.)
+vi neighborhood_analysis-config.txt
+# 2. Populate batch-inputs/ — one line per run; semicolons separate multiple RDS files within a run
+vi batch-inputs/rds_files.txt       # e.g.: /data/s1.rds;/data/s2.rds;/data/s3.rds
+vi batch-inputs/celltype_cols.txt   # column name, or NULL for auto-detect
+vi batch-inputs/out_dirs.txt
+vi batch-inputs/labels.txt
+vi batch-inputs/condition_maps.txt  # e.g.: sample1=treated,sample2=control  (or NULL)
+# 3. Submit. neighborhood_analysis-meta.s pre-validates row alignment before sbatch.
+sbatch neighborhood_analysis-meta.s
+```
+
+To run on a single cohort outside of SLURM:
+
+```bash
+Rscript run-neighborhood_analysis.R --help
+Rscript run-neighborhood_analysis.R \
+    --rds-files=/data/s1.rds;/data/s2.rds;/data/s3.rds \
+    --out-dir=/data/results \
+    --label=cohort1_20260620 \
+    --celltype-col=celltype \
+    --k1=10 \
+    --condition-map=s1=treated,s2=control,s3=control
 ```
 
 ---
@@ -591,6 +657,109 @@ The coordinate / area / negative-control / volume **column names** are global (s
 
 ---
 
+### neighborhood_analysis
+
+#### What it does
+
+Headless port of the PhenoSuite NeighborhoodR module. Accepts a cohort of `SpatialExperiment` objects (multi-sample or single-sample), pools KNN niche composition vectors across all cells, runs an optional leave-one-out (LOO) stability sweep to select the optimal neighbourhood count K₂, then assigns every cell to a neighbourhood via MiniBatchKMeans and writes a single concatenated `SpatialExperiment` with per-cell `neighbourhood` and `sample` annotations.
+
+```
+Load SPEs → pool KNN niche matrix → LOO sweep (optional) →
+MiniBatchKMeans assignment → cbind SPEs → export
+```
+
+Uses a high-performance scikit-learn / scipy backend (BallTree KNN, sparse scatter-add, MiniBatchKMeans). Falls back silently to RANN + base `kmeans` if sklearn / scipy / numpy are absent.
+
+#### Inputs
+
+- **SpatialExperiment `.rds` files** (one or more per run): each must contain spatial coordinates and a cell-type annotation column in `colData`. Multiple samples within one cohort are supplied as semicolon-separated paths on a single `batch-inputs/rds_files.txt` line.
+- **Condition map** (optional): `sample1=treated,sample2=control` — maps sample names to experimental conditions for downstream comparative visualisation.
+
+#### Outputs
+
+Written under each `${out_dir}`, prefixed with `<label>_`:
+
+| File | Contents |
+|---|---|
+| `<label>_joint_spe.rds` | Single concatenated `SpatialExperiment` with `neighbourhood` and `sample` in `colData` |
+| `<label>_assignment_summary.csv` | Cell counts per sample × neighbourhood |
+| `<label>_sweep_results.csv` | LOO stability scores for K₂ = `k2_min`…`k2_max` (empty when sweep is skipped) |
+| `<label>_spatial_<sample>.png` | Per-sample tissue-space plot coloured by neighbourhood (when `make_plots=TRUE`) |
+| `<label>_composition.png` | Stacked-bar neighbourhood composition per cell type (when `make_plots=TRUE`) |
+| `<label>_provenance.json` | Inputs, parameters, R / Python versions, git SHA, image digest |
+
+#### Entry point and orchestration
+
+`sbatch neighborhood_analysis-meta.s` reads [neighborhood_analysis-config.txt](neighborhood_analysis/neighborhood_analysis-config.txt), validates that every `batch-inputs/*.txt` file has at least `batch_size` rows (submission aborts with a clear error otherwise), and submits [run-neighborhood_analysis.s](neighborhood_analysis/run-neighborhood_analysis.s) as an array job sized `1..batch_size`. Each array task extracts its row from every list and invokes the CLI:
+
+```bash
+Rscript run-neighborhood_analysis.R \
+    --rds-files="${rds_files_tmp}" \
+    --out-dir="${out_dir_tmp}" \
+    --label="${label_tmp}" \
+    --celltype-col="${celltype_cols_tmp}" \
+    --condition-map="${condition_maps_tmp}" \
+    --k1="${k1}" --k2="${k2}" \
+    --k2-min="${k2_min}" --k2-max="${k2_max}" \
+    --loo-mode="${loo_mode}" --loo-n="${loo_n}" \
+    --agg-fn="${agg_fn}" --condition-col="${condition_col}" \
+    --seed="${seed}" $([ "${make_plots}" = "FALSE" ] && echo "--no-plots")
+```
+
+Full option reference:
+
+```
+Required:
+  --rds-files=SPEC       semicolon-separated .rds paths, or path to a .txt file listing one path per line
+  --out-dir=DIR          output directory (created if missing)
+  --label=STR            output filename prefix
+
+Optional — cell type:
+  --celltype-col=SPEC    scalar column name, or per-sample map "s1=col1,s2=col2"  [default: auto-detect]
+
+Optional — neighbourhood parameters:
+  --k1=INT               K for KNN niche matrix                        [default: 10]
+  --k2=INT               fixed neighbourhood count; skips LOO sweep    [default: NULL → run sweep]
+  --k2-min=INT           LOO sweep lower bound                         [default: 3]
+  --k2-max=INT           LOO sweep upper bound; NULL → k2_min+5        [default: NULL]
+
+Optional — LOO sweep:
+  --loo-mode=STR         'count' (drop one sample per fold) or 'label' (stratify by condition)  [default: count]
+  --loo-n=INT            samples to drop per fold                      [default: 1]
+  --agg-fn=STR           'median' or 'mean' to aggregate fold scores   [default: median]
+
+Optional — export:
+  --condition-map=STR    "s1=cond1,s2=cond2" — condition labels for plots  [default: NULL]
+  --condition-col=STR    colData column already holding condition labels    [default: NULL]
+  --seed=INT             RNG seed                                           [default: 42]
+  --no-plots             suppress PNG output
+  -h, --help             show help and exit
+```
+
+Sentinels that all mean *not set*: `NULL`, `null`, `NA`, `none`, `None`, `''` (empty). Any row of any `batch-inputs/*.txt` file may safely use `NULL`. `run-neighborhood_analysis.R` is fully standalone-runnable without SLURM.
+
+One environment variable controls sibling-file discovery:
+
+| Variable | Meaning |
+|---|---|
+| `NEIGHBORHOODR_DIR` | Directory holding `neighborhood_analysis-utils.R`. Auto-detected from the script location; override only if the files are split across directories. |
+
+#### batch-inputs/ format
+
+Every file in [neighborhood_analysis/batch-inputs/](neighborhood_analysis/batch-inputs/) holds **one row per run** (where a "run" is one cohort of one or more samples). Row N must describe the same cohort across all files. Use `NULL` for any unused slot.
+
+| File | Contents | Example row |
+|---|---|---|
+| `rds_files.txt` | semicolon-separated `.rds` SPE paths for this cohort | `/data/s1.rds;/data/s2.rds;/data/s3.rds` |
+| `celltype_cols.txt` | column name in `colData`, `NULL` for auto-detect, or per-sample map | `celltype` |
+| `out_dirs.txt` | output directory | `/data/results/cohort1` |
+| `labels.txt` | output filename prefix | `cohort1_20260620` |
+| `condition_maps.txt` | condition assignment string, or `NULL` | `s1=treated,s2=control,s3=control` |
+
+**To add a cohort:** append one line to each file above.
+
+---
+
 ## Configuration reference
 
 Every config file is just a shell-sourced `KEY=value` file — the launchers `source` it, so bash substitutions like `$(wc -l …)` work and absolute paths must be quoted if they contain spaces.
@@ -731,6 +900,42 @@ module1_time=0-06                          # wall time (D-HH)
 module1_partition=a100_short               # SLURM partition (site-specific)
 ```
 
+### [neighborhood_analysis/neighborhood_analysis-config.txt](neighborhood_analysis/neighborhood_analysis-config.txt)
+
+```bash
+configFile=neighborhood_analysis-config.txt
+
+# Batch-input file paths (line-aligned; row N = cohort N)
+rds_files=batch-inputs/rds_files.txt             # per-cohort RDS paths (; = multiple samples within a run)
+celltype_cols=batch-inputs/celltype_cols.txt      # per-cohort celltype column name (NULL → auto-detect)
+out_dirs=batch-inputs/out_dirs.txt               # per-cohort output directories
+labels=batch-inputs/labels.txt                   # per-cohort output filename prefix
+condition_maps=batch-inputs/condition_maps.txt   # per-cohort condition assignment (NULL if none)
+
+# Neighbourhood parameters
+k1=10           # int — K for KNN niche matrix
+k2=NULL         # int — fixed neighbourhood count; NULL → run LOO sweep
+k2_min=3        # int — LOO sweep lower bound (used when k2=NULL)
+k2_max=NULL     # int — LOO sweep upper bound; NULL → k2_min+5
+
+# LOO sweep options
+loo_mode=count  # count | label — how to partition samples in each fold
+loo_n=1         # int — samples dropped per LOO fold
+agg_fn=median   # median | mean — aggregate fold stability scores
+condition_col=NULL  # colData column already holding condition labels (alternative to condition_map)
+
+# Misc
+seed=42
+make_plots=TRUE
+
+# SLURM parameters
+batch_size=$(wc -l < ${rds_files} | awk '{print $1}')  # auto-computed from primary list
+module1_Path=run-neighborhood_analysis.s               # path to array-task launcher
+module1_mem=128GB                                       # memory per array task
+module1_time=0-6                                        # wall time (D-HH)
+module1_partition=cpu_short                             # SLURM partition (site-specific)
+```
+
 ---
 
 ## Active vs. legacy files
@@ -745,6 +950,7 @@ The repository carries several older versions alongside the current implementati
 | masquerade (helpers) | methods on the `Masquerade` class | `masquerade_utils.py` (superseded by `Masquerade.py`) |
 | masquerade (launcher) | `run-masquerade-batch.sh` | `run-masquerade-batch_v0.sh` |
 | spatial-dynamics | `pwlo_es_pt.py`, `n_simplex_neighborhoods.py`, `getNeighborhoods.py`, `optimize-neighborhoods.py` | `getNeighborhoods-v0.R`, `getNeighborhoods-v1.R`, `optimize-neighborhoods.R` |
+| neighborhood_analysis | `run-neighborhood_analysis.R` + `neighborhood_analysis-utils.R` | — (no legacy files) |
 
 ---
 
@@ -755,6 +961,7 @@ Each module ships a `makeRunLog-batch.sh` that creates a timestamped file in `ru
 - [RunPhenomenalist/makeRunLog-batch.sh](RunPhenomenalist/makeRunLog-batch.sh) — invoke manually after a run; writes to [RunPhenomenalist/run-logs-batch/](RunPhenomenalist/run-logs-batch/).
 - [masquerade/makeRunLog-batch.sh](masquerade/makeRunLog-batch.sh) — called automatically at the end of [run-masquerade-batch.sh](masquerade/run-masquerade-batch.sh:73); writes to [masquerade/run-logs-batch/](masquerade/run-logs-batch/).
 - [merfish/makeRunLog-batch.sh](merfish/makeRunLog-batch.sh) — invoke manually before/after a run; writes to `merfish/run-logs-batch/`.
+- [neighborhood_analysis/makeRunLog-batch.sh](neighborhood_analysis/makeRunLog-batch.sh) — called automatically at the end of [run-neighborhood_analysis.s](neighborhood_analysis/run-neighborhood_analysis.s); writes to `neighborhood_analysis/run-logs-batch/`.
 
 SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch` from.
 
