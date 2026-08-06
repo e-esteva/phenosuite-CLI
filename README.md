@@ -1,12 +1,15 @@
 # phenosuite-CLI
 
-Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles five independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
+Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles six independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
 
+- **[segmentation](segmentation/)** — cell segmentation from multi-channel tissue images with four interchangeable routes: Segment Anything (SAM), DeepCell Mesmer, StarDist, and Cellpose (Python).
 - **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
 - **[masquerade](masquerade/)** — circular cluster-mask generation for QuPath overlays on OME-TIFF / QPTIFF images (Python).
 - **[spatial-dynamics](spatial-dynamics/)** — pairwise log-odds and multi-cell-type neighborhood enrichment for spatial cell–cell relationships (Python).
 - **[merfish](merfish/)** — headless MERFISH spatial-transcriptomics pipeline: QC, normalization, clustering, neighborhood enrichment, spatially variable genes, and differential expression from cell × gene matrices (R).
 - **[neighborhood_analysis](neighborhood_analysis/)** — KNN niche composition matrix, LOO stability sweep to select optimal neighbourhood count K₂, and MiniBatchKMeans assignment across multi-sample SpatialExperiment cohorts (R + Python).
+
+The **segmentation** module's centroid-table output feeds directly into **RunPhenomenalist**, whose downstream `mask-inputs/` output in turn feeds **masquerade** — the three modules form one segmentation → phenotyping → visualization chain.
 
 Each module is a self-contained `sbatch`-driven array job: a config file declares parameters, line-aligned text files in `batch-inputs/` declare the samples, and one `sbatch …` command fans the batch out across array tasks.
 
@@ -18,16 +21,18 @@ Each module is a self-contained `sbatch`-driven array job: a config file declare
 2. [Prerequisites](#prerequisites)
 3. [Quickstart](#quickstart)
 4. [Modules](#modules)
+   - [segmentation](#segmentation)
    - [RunPhenomenalist](#runphenomenalist)
    - [masquerade](#masquerade)
    - [spatial-dynamics](#spatial-dynamics)
    - [merfish](#merfish)
    - [neighborhood_analysis](#neighborhood_analysis)
-5. [Configuration reference](#configuration-reference)
-6. [Active vs. legacy files](#active-vs-legacy-files)
-7. [Run logs](#run-logs)
-8. [Known limitations](#known-limitations)
-9. [Troubleshooting](#troubleshooting)
+5. [Image preprocessing (QuPath crops for SAM)](#image-preprocessing-qupath-crops-for-sam)
+6. [Configuration reference](#configuration-reference)
+7. [Active vs. legacy files](#active-vs-legacy-files)
+8. [Run logs](#run-logs)
+9. [Known limitations](#known-limitations)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -37,6 +42,23 @@ Each module is a self-contained `sbatch`-driven array job: a config file declare
 phenosuite-CLI/
 ├── README.md
 ├── .gitignore
+│
+├── segmentation/                              # Python pipeline: SAM / Mesmer / StarDist / Cellpose routing
+│   ├── run_segmentation.py                   #   CLI wrapper (named flags; standalone-runnable)
+│   ├── segmentation_utils.py                 #   image I/O, channel resolution, per-route runners, exports
+│   ├── segmentation-config.txt               #   batch config (edit this)
+│   ├── segmentation-meta.s                   #   SLURM entry point — `sbatch` this
+│   ├── run-segmentation.s                    #   SLURM array task (called by meta)
+│   ├── makeRunLog-batch.sh                   #   captures config + input lists per run
+│   ├── environment.yml                       #   conda env spec (python=3.10 + torch/tensorflow + 4 backends)
+│   ├── batch-inputs/                         #   line-aligned per-image inputs
+│   │   ├── images.txt
+│   │   ├── out_dirs.txt
+│   │   ├── labels.txt
+│   │   ├── methods.txt
+│   │   ├── nuclear_channels.txt
+│   │   └── membrane_channels.txt
+│   └── run-logs-batch/                       #   timestamped run logs (generated)
 │
 ├── RunPhenomenalist/                         # R pipeline: scaling + dimensionality reduction + clustering
 │   ├── RunPhenomenalist.R                    #   core pipeline function
@@ -130,11 +152,27 @@ phenosuite-CLI/
 
 ## Prerequisites
 
-Every module ships a conda `environment.yml` — RunPhenomenalist installs an R runtime, masquerade and spatial-dynamics install Python runtimes. The sbatch launchers `source activate` each env by name, so create the env with the shipped file and the launchers work as-is.
+Every module ships a conda `environment.yml` — RunPhenomenalist installs an R runtime, segmentation / masquerade / spatial-dynamics install Python runtimes. The sbatch launchers `source activate` each env by name, so create the env with the shipped file and the launchers work as-is.
 
 ### Cluster
 
 - A **SLURM** cluster. Partition names in the shipped configs (`a100_short`, `cpu_dev`) are site-specific — edit them for your cluster before running.
+
+### segmentation
+
+Create the conda env from the shipped spec — the launcher expects it to be named `segmentation` and runs `source activate segmentation`:
+
+```bash
+cd segmentation/
+conda env create -f environment.yml
+```
+
+[environment.yml](segmentation/environment.yml) installs `python=3.10`, `pytorch` + `torchvision`, and, via pip, all four backends: `cellpose`, `stardist` + `tensorflow`, `deepcell` + `tensorflow`, and `segment-anything`. That pulls in both PyTorch and TensorFlow, which is heavy and occasionally version-fussy on shared HPC modules — if you only need one or two routes, trim the `pip:` list to just those packages (see the comment block at the bottom of the file).
+
+Also required at runtime:
+
+- **A SAM checkpoint** for `--method=sam` — download one of the ViT checkpoints from the [Segment Anything repo](https://github.com/facebookresearch/segment-anything#model-checkpoints) and point `sam_checkpoint=` at it in the config (or pass `--sam-checkpoint=PATH` directly). Not required for the other three routes.
+- **A GPU** is strongly recommended for all four routes but not required — `gpu=AUTO` in the config auto-detects CUDA via `torch.cuda.is_available()` and falls back to CPU silently.
 
 ### RunPhenomenalist
 
@@ -230,11 +268,41 @@ The Python packages activate the high-performance backend automatically at runti
 
 ## Quickstart
 
-All three modules follow the same pattern:
+All modules follow the same pattern:
 
 1. Edit the config file (`*-config*.txt`) in the module directory.
 2. Add one line per sample to each file in `batch-inputs/` — **line N across every file = sample N**. The array size is auto-computed from the line count of the primary input list.
 3. Submit the meta launcher with `sbatch`.
+
+### segmentation
+
+```bash
+cd segmentation/
+# 1. Edit segmentation-config.txt (default_method, model names, SLURM params)
+vi segmentation-config.txt
+# 2. Populate batch-inputs/ — one line per image in each file; use 'NULL' for empty rows
+vi batch-inputs/images.txt
+vi batch-inputs/out_dirs.txt
+vi batch-inputs/labels.txt
+vi batch-inputs/methods.txt
+vi batch-inputs/nuclear_channels.txt
+vi batch-inputs/membrane_channels.txt
+# 3. Submit. segmentation-meta.s pre-validates that every batch-inputs file
+#    has >= batch_size rows before calling sbatch.
+sbatch segmentation-meta.s
+```
+
+To run the underlying CLI on a single image outside of SLURM (useful for debugging):
+
+```bash
+python run_segmentation.py --help
+python run_segmentation.py \
+    --image=/data/sample1.ome.tiff \
+    --out-dir=/data/sample1/out-segmentation \
+    --method=cellpose \
+    --nuclear-channel=DAPI \
+    --membrane-channel=CD45
+```
 
 ### RunPhenomenalist
 
@@ -354,6 +422,128 @@ Rscript run-neighborhood_analysis.R \
 ---
 
 ## Modules
+
+### segmentation
+
+#### What it does
+
+Segments cells from a multi-channel tissue image and routes the job through one of four interchangeable backends selected with `--method` (or the per-image `methods.txt` batch-input):
+
+| Route | Backend | Typical use |
+|---|---|---|
+| `cellpose` (default) | [Cellpose](https://github.com/MouseLand/cellpose) | Generalist nuclei/cytoplasm segmentation; nuclear-only or two-channel "cyto" mode |
+| `mesmer` | [DeepCell Mesmer](https://github.com/vanvalenlab/deepcell-tf) | Nuclear or whole-cell segmentation trained on multiplexed tissue images |
+| `stardist` | [StarDist](https://github.com/stardist/stardist) | Star-convex nuclei segmentation; strong on dense, round nuclei |
+| `sam` | [Segment Anything](https://github.com/facebookresearch/segment-anything) | Promptless automatic mask generation on a pseudo-RGB composite; no cell-type prior, boundaries are approximate |
+
+The nuclear (and, for whole-cell routes, membrane) channel is resolved from the image by name or 0-based index, or auto-detected by pattern (`DAPI`, `Hoechst`, …) when left unset. All four routes emit the same output contract, so downstream tooling doesn't need to know which one produced a given mask.
+
+**Memory scaling on large multiplex images.** QPTIFF / OME-TIFF panels (CODEX, multiplexed IF) routinely carry 20-60+ marker channels, each stored as its own TIFF page. `run_segmentation.py` reads channel *names* from metadata only, then decodes just the 1-2 pages it actually needs (nuclear ± membrane) — it never loads the full channel stack into memory. For a 40-channel QPTIFF, that's roughly a 20x reduction versus decoding every channel, which is what makes a 1-4 GB QPTIFF practical on a single array-task's memory budget (`module1_mem` in the config).
+
+#### Inputs
+
+- **Image** — multi-channel TIFF, OME-TIFF, or QPTIFF. Channel names are extracted from OME-XML metadata or the QPTIFF `Biomarker` tag, reusing the same detection logic as [masquerade](masquerade/Masquerade.py); plain TIFFs without embedded channel names fall back to `Channel_0`, `Channel_1`, … (pass `--nuclear-channel`/`--membrane-channel` as indices in that case).
+- A SAM checkpoint `.pth` file, only for `--method=sam`.
+
+#### Outputs
+
+Written under `--out-dir`, prefixed with `--label` (defaults to the image basename):
+
+| File | Contents |
+|---|---|
+| `{label}_mask.tif` | uint32 label mask, same H × W as the input image |
+| `{label}_centroids.csv` | `label, y, x, area` — one row per segmented object. Having `label`/`y`/`x` columns present matches the bare **Mesmer** segmentation-table fingerprint that [RunPhenomenalist](#runphenomenalist) auto-detects, so this file (plus any marker intensities you join onto it) drops straight into RunPhenomenalist / masquerade regardless of which route produced it |
+| `{label}_overlay.png` | nuclear channel with mask boundaries drawn in red, for quick QC |
+| `{label}_provenance.json` | inputs, route, resolved channels, parameters, object count, timing, git SHA |
+
+#### Entry point and orchestration
+
+`sbatch segmentation-meta.s` reads [segmentation-config.txt](segmentation/segmentation-config.txt), validates that every `batch-inputs/*.txt` file has at least `batch_size` rows, and submits [run-segmentation.s](segmentation/run-segmentation.s) as an array job sized `1..batch_size` (with `--gres=${module1_gres}` attached when set). Each array task extracts its row from every `batch-inputs/*.txt` file with `sed -n "${SLURM_ARRAY_TASK_ID}p"`, resolves a `NULL`/empty `methods.txt` row to the config's `default_method`, and invokes the CLI with named flags:
+
+```bash
+python run_segmentation.py \
+    --image="${image_tmp}" \
+    --out-dir="${out_dir_tmp}" \
+    --label="${label_tmp}" \
+    --method="${method_tmp}" \
+    --nuclear-channel="${nuc_tmp}" \
+    --membrane-channel="${mem_tmp}" \
+    --diameter="${diameter}" \
+    --cellpose-model="${cellpose_model}" \
+    --stardist-model="${stardist_model}" \
+    --sam-checkpoint="${sam_checkpoint}" \
+    --sam-model-type="${sam_model_type}" \
+    --resolution="${resolution}" \
+    --min-size="${min_size}" \
+    --tile-size="${tile_size}" \
+    --tile-overlap="${tile_overlap}" \
+    --seed="${seed}"
+```
+
+Full option reference:
+
+```
+Required:
+  --image=PATH                 multi-channel TIFF / OME-TIFF / QPTIFF path
+  --out-dir=DIR                output directory (created if missing)
+
+Route:
+  --method=STR                 sam | mesmer | stardist | cellpose         [default: cellpose]
+
+Channels:
+  --nuclear-channel=SPEC       channel name or 0-based index              [default: auto-detect]
+  --membrane-channel=SPEC      channel name or 0-based index              [default: nuclear-only]
+
+Route parameters:
+  --diameter=FLOAT             cellpose expected object diameter, px      [default: 0 -> auto-estimate]
+  --cellpose-model=STR         cellpose model_type                       [default: cyto3]
+  --stardist-model=STR         pretrained StarDist2D model name           [default: 2D_versatile_fluo]
+  --sam-checkpoint=PATH        SAM ViT checkpoint .pth (required for sam)
+  --sam-model-type=STR         vit_h | vit_l | vit_b                     [default: vit_b]
+  --sam-max-side=INT           refuse sam above N px on longest side     [default: 4096; 0 -> no limit]
+  --resolution=FLOAT           microns/pixel, used by mesmer              [default: 0.5]
+
+Post-processing:
+  --min-size=INT               drop objects smaller than N px            [default: 0 -> no filter]
+  --tile-size=INT               tile size, px (stardist/cellpose)         [default: 0 -> auto/whole-image]
+  --tile-overlap=INT            tile overlap, px (stardist only)          [default: 64]
+
+Misc:
+  --label=STR                  output filename prefix                    [default: image basename]
+  --gpu / --no-gpu              force GPU / CPU                          [default: auto-detect]
+  --no-overlay                 skip the QC overlay PNG
+  --no-centroids                skip the centroids CSV
+  --seed=INT                    RNG seed                                 [default: 42]
+  -h, --help                    show help and exit
+```
+
+Sentinels that mean *not set* for `--label`, `--nuclear-channel`, `--membrane-channel`, `--sam-checkpoint`, and per-image `batch-inputs/*.txt` rows: `NULL`, `null`, `NA`, `none`, `None`, `''` (empty). Unlike the other modules in this repo, **`0` is deliberately not a sentinel** here — it's a legitimate 0-based channel index (often the DAPI channel).
+
+`run_segmentation.py` is fully standalone-runnable, so you can debug a single image on a login/dev node without SLURM. Route-specific backends (`torch`, `tensorflow`, `cellpose`, `stardist`, `deepcell`, `segment-anything`) are imported lazily inside each route's runner function, so `--help` and unrelated routes work even if only some backends are installed; a missing backend fails with an install hint rather than a raw traceback.
+
+One environment variable pair controls provenance stamping:
+
+| Variable | Meaning |
+|---|---|
+| `PHENOSUITE_GIT_SHA` | Recorded in `{label}_provenance.json`; `"unknown"` if unset |
+| `PHENOSUITE_IMAGE_DIGEST` | Recorded in `{label}_provenance.json`; `"unknown"` if unset |
+
+#### batch-inputs/ format
+
+Every file in [segmentation/batch-inputs/](segmentation/batch-inputs/) holds **one row per image**, and row N must describe the same image across all files. Use the literal string `NULL` for a row with no value (never `0` — see above).
+
+| File | Contents | Example row |
+|---|---|---|
+| `images.txt` | absolute path to the multi-channel image | `/data/sample1.ome.tiff` |
+| `out_dirs.txt` | output directory (created if missing) | `/data/sample1/out-segmentation` |
+| `labels.txt` | output filename prefix, or `NULL` (→ image basename) | `sample1` |
+| `methods.txt` | `sam` \| `mesmer` \| `stardist` \| `cellpose`, or `NULL` (→ `default_method`) | `cellpose` |
+| `nuclear_channels.txt` | channel name or index, or `NULL` (→ auto-detect) | `DAPI` |
+| `membrane_channels.txt` | channel name or index, or `NULL` (→ nuclear-only) | `CD45` |
+
+**To add an image:** append one line to each file above. The config's `batch_size=$(wc -l …)` will pick up the new count automatically.
+
+---
 
 ### RunPhenomenalist
 
@@ -760,9 +950,91 @@ Every file in [neighborhood_analysis/batch-inputs/](neighborhood_analysis/batch-
 
 ---
 
+## Image preprocessing (QuPath crops for SAM)
+
+`--method=sam` refuses images wider than `--sam-max-side` px on the longest side (default 4096 — see [Known limitations](#known-limitations)), because `SamAutomaticMaskGenerator` has no tiling and no cell-biology prior and doesn't scale to whole-slide QPTIFF/OME-TIFF images. `cellpose`, `mesmer`, and `stardist` don't need this — they tile or scale internally — so this section only matters if you specifically want to try the SAM route on a region of interest.
+
+If your images are managed in QuPath (as with [masquerade](masquerade/)'s output), it can crop a region and export it as a channel-metadata-preserving OME-TIFF directly, which drops straight into `segmentation/run_segmentation.py --image=...`.
+
+### Option A — GUI crop and export
+
+1. Open the image in QuPath and draw a **rectangle annotation** around the region you want to segment (toolbar rectangle tool, or `R` shortcut).
+2. Select the annotation, then **File → Export images...**
+3. Choose **OME TIFF** as the export format — this preserves the per-channel `<Channel Name=...>` metadata that `segmentation`'s channel auto-detection and `--nuclear-channel`/`--membrane-channel` name lookup rely on. (A plain "TIFF" export typically drops channel names, forcing you to fall back to `--nuclear-channel` by index instead of name.)
+4. Enable the region/crop option so the export is bounded to the selected annotation rather than the whole slide, and set downsample to `1` to keep full resolution.
+5. Export, then point the segmentation module at the result:
+   ```bash
+   python run_segmentation.py --image=/path/to/cropped_roi.ome.tiff --out-dir=... --method=sam --sam-checkpoint=...
+   ```
+
+QuPath's exact dialog labels have shifted a little across versions (0.4.x vs 0.5.x) — if you don't see a region/crop toggle, check the current [QuPath documentation](https://qupath.readthedocs.io/) for your installed version.
+
+### Option B — Groovy script (scripted / reproducible crops)
+
+For a crop you want to reproduce exactly (e.g. as part of a batch of ROIs feeding `segmentation/batch-inputs/images.txt`), use QuPath's scripting console (**Automate → Show script editor**) or run headlessly via the `QuPath script` CLI. The building blocks are `RegionRequest` (defines the pixel bounding box) and `OMEPyramidWriter` (writes an OME-TIFF, optionally cropped to that region):
+
+```groovy
+import qupath.lib.regions.RegionRequest
+import qupath.lib.images.writers.ome.OMEPyramidWriter
+
+def server = getCurrentServer()
+def x = 2000, y = 4000, w = 4000, h = 4000   // pixel bounding box of the ROI
+def request = RegionRequest.createInstance(server.getPath(), 1.0, x, y, w, h)
+
+new OMEPyramidWriter.Builder(server)
+    .region(request)
+    .tileSize(512)
+    .build()
+    .writeSeries('/path/to/cropped_roi.ome.tiff')
+```
+
+Treat this as a starting point rather than a drop-in for every QuPath version — the `OMEPyramidWriter` builder API has changed slightly across QuPath releases, so check the [scripting docs](https://qupath.readthedocs.io/) for your version if it doesn't run as-is. Keep `w`/`h` at or below `sam_max_side` (4096 by default) so the crop passes the segmentation module's guard without needing `--sam-max-side=0`.
+
+---
+
 ## Configuration reference
 
 Every config file is just a shell-sourced `KEY=value` file — the launchers `source` it, so bash substitutions like `$(wc -l …)` work and absolute paths must be quoted if they contain spaces.
+
+### [segmentation/segmentation-config.txt](segmentation/segmentation-config.txt)
+
+```bash
+configFile=segmentation-config.txt
+
+# Batch-input file paths (line-aligned; row N = image N)
+image=batch-inputs/images.txt                       # multi-channel TIFF / OME-TIFF / QPTIFF path
+out_dirs=batch-inputs/out_dirs.txt                   # output directory per image
+labels=batch-inputs/labels.txt                       # output filename prefix (NULL -> image basename)
+methods=batch-inputs/methods.txt                     # sam | mesmer | stardist | cellpose (NULL -> default_method)
+nuclear_channels=batch-inputs/nuclear_channels.txt   # channel name or index (NULL -> auto-detect DAPI/Hoechst)
+membrane_channels=batch-inputs/membrane_channels.txt # channel name or index (NULL -> nuclear-only)
+
+# Route + shared parameters (global — apply to every image in the batch)
+default_method=cellpose      # sam | mesmer | stardist | cellpose — used when methods.txt row is NULL
+diameter=0                   # cellpose expected object diameter in px (0 = auto-estimate)
+cellpose_model=cyto3
+stardist_model=2D_versatile_fluo
+sam_model_type=vit_b         # vit_h | vit_l | vit_b — must match sam_checkpoint
+sam_checkpoint=              # path to a downloaded SAM ViT checkpoint .pth (required for method=sam)
+sam_max_side=4096            # safety guard: refuse method=sam above this many px on the longest
+                              # side (SAM has no tiling / cell-biology prior) — 0 disables the guard
+resolution=0.5               # float (µm/pixel) — used by mesmer for cell sizing
+min_size=15                  # drop objects smaller than this many px (0 = no filter)
+tile_size=0                  # tile size in px for stardist/cellpose on large images (0 = auto/whole-image)
+tile_overlap=64              # tile overlap in px (stardist only)
+gpu=AUTO                     # TRUE | FALSE | AUTO — AUTO detects CUDA via torch
+export_overlay=TRUE          # write a boundary-overlay PNG per image
+export_centroids=TRUE        # write a label,y,x,area centroid CSV per image
+seed=42
+
+# SLURM parameters
+batch_size=$(wc -l < ${image} | awk '{print $1}')
+module1_Path=run-segmentation.s
+module1_mem=64GB
+module1_time=0-6
+module1_partition=a100_short
+module1_gres=gpu:1           # SLURM --gres value; leave blank for a CPU-only partition
+```
 
 ### [RunPhenomenalist/phenomenalist-config.txt](RunPhenomenalist/phenomenalist-config.txt)
 
@@ -944,6 +1216,7 @@ The repository carries several older versions alongside the current implementati
 
 | Module | Active | Legacy / archived |
 |---|---|---|
+| segmentation | `run_segmentation.py` + `segmentation_utils.py` | — (no legacy files) |
 | RunPhenomenalist | `run-phenomenalist.R` + `RunPhenomenalist.R` | `v0/RunPhenomenalist-interface.R` (docopt-based) |
 | masquerade (core) | `Masquerade.py` (class-based) | `Masquerade_v0.py` (function-based) |
 | masquerade (CLI wrapper) | `masquerade_interface.py` | `masquerade_interface_v0.py`, `masquerade_interface_v1.py` (experimental — not wired into the launcher) |
@@ -958,6 +1231,7 @@ The repository carries several older versions alongside the current implementati
 
 Each module ships a `makeRunLog-batch.sh` that creates a timestamped file in `run-logs-batch/` capturing the config that was used plus the contents of every batch-input list. This is a post-run reproducibility record — not SLURM job metadata.
 
+- [segmentation/makeRunLog-batch.sh](segmentation/makeRunLog-batch.sh) — called automatically at the end of [run-segmentation.s](segmentation/run-segmentation.s); writes to `segmentation/run-logs-batch/`.
 - [RunPhenomenalist/makeRunLog-batch.sh](RunPhenomenalist/makeRunLog-batch.sh) — invoke manually after a run; writes to [RunPhenomenalist/run-logs-batch/](RunPhenomenalist/run-logs-batch/).
 - [masquerade/makeRunLog-batch.sh](masquerade/makeRunLog-batch.sh) — called automatically at the end of [run-masquerade-batch.sh](masquerade/run-masquerade-batch.sh:73); writes to [masquerade/run-logs-batch/](masquerade/run-logs-batch/).
 - [merfish/makeRunLog-batch.sh](merfish/makeRunLog-batch.sh) — invoke manually before/after a run; writes to `merfish/run-logs-batch/`.
@@ -969,6 +1243,9 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 
 ## Known limitations
 
+- **segmentation's `mesmer` and `sam` routes run whole-image inference only** — `--tile-size` / `--tile-overlap` are honored by `cellpose` and `stardist` (via `predict_instances_big`) but ignored (with a printed note) for `mesmer` and `sam`. Very large images may need to be cropped externally before running those two routes.
+- **segmentation's `environment.yml` bundles all four backends into one env**, which pulls in both PyTorch and TensorFlow — heavy and occasionally version-fussy on shared HPC modules. Trim the `pip:` list to the route(s) you actually use if you hit install conflicts (see the comment block at the bottom of [segmentation/environment.yml](segmentation/environment.yml)).
+- **segmentation's SAM route does not scale to whole-slide QPTIFFs, and is guarded accordingly.** `SamAutomaticMaskGenerator` has no tiling and no cell-biology prior — it runs Meta's ViT encoder once on a pseudo-RGB composite of the nuclear (+ membrane) channel. `run_sam()` refuses to run above `--sam-max-side` px on the longest side (default 4096) rather than silently burning GPU time on a slow, low-quality result; pass `--sam-max-side=0` (or a larger value) to override, but prefer `cellpose`, `mesmer`, or `stardist` for full QPTIFFs/OME-TIFFs and reserve `sam` for cropped ROIs.
 - **Site-specific paths.** [configFile-batch.txt:3-9](masquerade/configFile-batch.txt) contains hard-coded `/gpfs/data/abl/tric/…` paths that must be edited before use elsewhere. The RunPhenomenalist CLI no longer needs editing for this — it discovers sibling files from its own script directory and loads `library(phenomenalist)` from the normal R library path.
 - **SLURM partitions are site-specific.** `a100_short` and `cpu_dev` will not exist on most clusters — edit each config and the `#SBATCH --partition=` line in [run-masquerade-batch.sh:3](masquerade/run-masquerade-batch.sh) before use.
 - **`run-pwlo.py` hard-codes `draw=False` and `compute_effect_size=False`** ([run-pwlo.py:13](spatial-dynamics/run-pwlo.py)) even though the config exposes those keys. Patch the wrapper if you need them.
@@ -982,6 +1259,11 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Array task N silently runs on the wrong sample | `batch-inputs/*.txt` files have mismatched line counts | `wc -l batch-inputs/*.txt` — every file should report the same number |
+| segmentation: `--method=sam requires 'torch' and 'segment-anything'` (or similar for cellpose/stardist/mesmer) | The route-specific backend isn't installed in the active env | Install just that backend (see the pip hint in the error), or `conda env create -f segmentation/environment.yml` for all four |
+| segmentation: `--sam-checkpoint is required when --method=sam` | No checkpoint configured | Download a ViT checkpoint from the [Segment Anything repo](https://github.com/facebookresearch/segment-anything#model-checkpoints) and set `sam_checkpoint=` in the config (or pass `--sam-checkpoint=PATH`) |
+| segmentation: `image is ... > --sam-max-side=4096` | SAM's whole-slide safety guard tripped — the image is larger than SAM can reasonably handle without tiling | Crop to a region of interest, switch to `cellpose`/`mesmer`/`stardist`, or override with `--sam-max-side=0` (no limit) / a larger value if you really want SAM on the full image |
+| segmentation: `could not resolve a nuclear channel from [...]` | Auto-detection found no `DAPI`/`Hoechst`-like channel name (common on plain TIFFs with no embedded metadata) | Pass `--nuclear-channel` explicitly as a name or 0-based index — remember `0` is a valid index here, not a sentinel |
+| segmentation produces very few / no objects | `--diameter` (cellpose) or the wrong channel resolved as nuclear | Check `{label}_overlay.png` and `{label}_provenance.json` for the resolved channel name; try `--diameter=0` for auto-estimation |
 | masquerade fails at the `bfconvert` step | `java/17.0.0` not loaded, or the partition `#SBATCH` header overrides the env | Confirm `module load java/17.0.0` in [run-masquerade-batch.sh:8](masquerade/run-masquerade-batch.sh); run `java -version` inside an interactive SLURM session |
 | `run-phenomenalist.R: error: RunPhenomenalist.R not found under …` | The wrapper could not auto-locate its siblings (rare — only happens when the script is copied without its directory, or run via a `source()` from another dir) | Set `PHENOMENALIST_DIR` to the directory containing `RunPhenomenalist.R` + `phenomenalist-utils.R` |
 | `phenomenalist package not available` | Neither `PHENOMENALIST_PKG_DIR` is set nor `library(phenomenalist)` succeeds | Install the `phenomenalist` R package, or set `PHENOMENALIST_PKG_DIR` to its `R/` source directory |
