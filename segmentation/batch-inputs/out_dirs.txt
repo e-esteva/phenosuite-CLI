@@ -1,0 +1,2 @@
+/path/to/output/sample1/out-segmentation
+/path/to/output/sample2/out-segmentation

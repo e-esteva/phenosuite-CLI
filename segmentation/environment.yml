@@ -1,0 +1,39 @@
+name: segmentation
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - numpy<2
+  - scipy
+  - pandas
+  - scikit-image
+  - tifffile
+  - imagecodecs
+  - matplotlib
+  - pytorch
+  - torchvision
+  - pip:
+      - cellpose>=3.0
+      - stardist
+      - tensorflow
+      - deepcell
+      - segment-anything @ git+https://github.com/facebookresearch/segment-anything.git
+
+# This single env installs all four routes (cellpose + stardist/tensorflow +
+# deepcell/tensorflow + SAM/torch) for convenience, but that pulls in both
+# PyTorch and TensorFlow, which is heavy and occasionally version-fussy on
+# shared HPC modules. If you only need one or two routes, trim the pip list
+# above accordingly, e.g. for cellpose-only:
+#
+#   pip:
+#     - cellpose>=3.0
+#
+# GPU builds of torch/tensorflow are site- and CUDA-version-specific — after
+# `conda env create`, verify with:
+#   python -c "import torch; print(torch.cuda.is_available())"
+#   python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+# and reinstall the matching wheel from pytorch.org / tensorflow.org if either
+# reports no GPU on a GPU node.

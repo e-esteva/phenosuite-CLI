@@ -1,0 +1,50 @@
+# segmentation-config.txt
+# ==================================
+# Sourced by segmentation-meta.s and run-segmentation.s.
+# Bash variable substitutions are evaluated at source time.
+
+configFile=segmentation-config.txt
+
+# ---------------------------------------------------------------------------
+# Batch inputs (one row per image; row N across every file = image N).
+# Pad any row with no value using the literal string 'NULL' (never '0' —
+# '0' is a legitimate 0-based channel index for nuclear_channels /
+# membrane_channels).
+# ---------------------------------------------------------------------------
+image=batch-inputs/images.txt                       # multi-channel TIFF / OME-TIFF / QPTIFF path
+out_dirs=batch-inputs/out_dirs.txt                   # output directory per image
+labels=batch-inputs/labels.txt                       # output filename prefix (NULL -> image basename)
+methods=batch-inputs/methods.txt                     # sam | mesmer | stardist | cellpose (NULL -> default_method)
+nuclear_channels=batch-inputs/nuclear_channels.txt   # channel name or index (NULL -> auto-detect DAPI/Hoechst)
+membrane_channels=batch-inputs/membrane_channels.txt # channel name or index (NULL -> nuclear-only)
+
+# ---------------------------------------------------------------------------
+# Route + shared parameters (global — apply to every image in the batch)
+# ---------------------------------------------------------------------------
+default_method=cellpose      # sam | mesmer | stardist | cellpose — used when methods.txt row is NULL
+diameter=0                   # cellpose expected object diameter in px (0 = auto-estimate)
+cellpose_model=cyto3
+stardist_model=2D_versatile_fluo
+sam_model_type=vit_b         # vit_h | vit_l | vit_b — must match sam_checkpoint
+sam_checkpoint=              # path to a downloaded SAM ViT checkpoint .pth (required for method=sam)
+sam_max_side=4096            # safety guard: refuse method=sam above this many px on the longest
+                              # side (SAM has no tiling / cell-biology prior, so it doesn't scale
+                              # to whole-slide images) — 0 disables the guard
+resolution=0.5               # float (µm/pixel) — used by mesmer for cell sizing
+min_size=15                  # drop objects smaller than this many px (0 = no filter)
+tile_size=0                  # tile size in px for stardist/cellpose on large images (0 = auto/whole-image)
+tile_overlap=64              # tile overlap in px (stardist only)
+gpu=AUTO                     # TRUE | FALSE | AUTO — AUTO detects CUDA via torch
+export_overlay=TRUE          # write a boundary-overlay PNG per image
+export_centroids=TRUE        # write a label,y,x,area centroid CSV per image
+seed=42
+
+# ---------------------------------------------------------------------------
+# SLURM parameters for the array job
+# ---------------------------------------------------------------------------
+batch_size=$(wc -l < ${image} | awk '{print $1}')
+module1_Path=run-segmentation.s
+module1_mem=64GB
+module1_time=0-6
+module1_partition=a100_short
+module1_gres=gpu:1           # SLURM --gres value; leave blank for a CPU-only partition

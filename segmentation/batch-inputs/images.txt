@@ -1,0 +1,2 @@
+/path/to/data/sample1.ome.tiff
+/path/to/data/sample2.qptiff
