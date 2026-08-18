@@ -1,0 +1,60 @@
+name: gemma-phenotyper
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  # R runtime
+  - r-base=4.1
+
+  # CRAN deps used by run-gemma-phenotyper.R / gemma-utils.R
+  - r-curl               # Ollama HTTP client
+  - r-jsonlite           # JSONL prompts + prediction parsing
+
+  # Bioconductor deps — SPE/SCE I/O and assay access
+  - bioconductor-singlecellexperiment
+  - bioconductor-spatialexperiment
+  - bioconductor-summarizedexperiment
+  - bioconductor-matrixgenerics
+
+  # Optional: .loom export (--export-loom=true). Drop if unused.
+  - r-hdf5r
+
+# ---------------------------------------------------------------------------
+# The 'hf' backend (HuggingFace weights via infer.py) — the default, and the
+# only one usable on an offline HPC node — additionally needs a Python env with
+# torch/transformers, pointed at by ${gemma_python} in
+# gemma-phenotyper-config.txt (or --python). It is kept separate from this R env
+# so the two can be provisioned and upgraded independently (and so a CUDA build
+# of torch can be selected per-cluster):
+#
+#   conda create -n gemma-infer python=3.10
+#   conda activate gemma-infer
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121 \
+#       "transformers>=4.50.0" "peft>=0.10.0" "accelerate>=0.28.0" \
+#       "bitsandbytes>=0.43.0"
+#
+# transformers floor depends on the checkpoint generation:
+#   Gemma 3  -> transformers>=4.50.0  (first stable release carrying Gemma 3)
+#   Gemma 4  -> transformers>=5.10.0  (gemma-4-12B's config declares
+#               transformers_version 5.10.0.dev0; the Gemma4Unified* classes do
+#               not exist before that). This is a MAJOR version jump — verify
+#               your other pinned deps before upgrading a working env.
+# Swap the --index-url for .../whl/cpu if the node has no GPU.
+#
+# Gated Gemma checkpoints must be fetched on a LOGIN node (compute nodes are
+# usually offline, and the array tasks run with HF_HUB_OFFLINE=1):
+#
+#   huggingface-cli login
+#   huggingface-cli download google/gemma-3-12b-it-qat-q4_0-unquantized \
+#       --local-dir /gpfs/data/myLab/models/gemma-3-12b-it-qat-q4_0-unquantized
+#
+# Gemma 4 is Apache-2.0 and ungated, so no `login` is needed for it:
+#   huggingface-cli download google/gemma-4-12B-it-qat-q4_0-unquantized \
+#       --local-dir /gpfs/data/myLab/models/gemma-4-12B-it-qat-q4_0-unquantized
+#
+# The optional 'ollama' backend needs no Python at all — only a reachable server:
+#   curl -fsSL https://ollama.com/install.sh | sh
+#   ollama serve
+#   ollama pull gemma3:12b-it-qat
+# ---------------------------------------------------------------------------

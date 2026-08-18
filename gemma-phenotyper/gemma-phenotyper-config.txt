@@ -1,0 +1,118 @@
+# gemma-phenotyper-config.txt
+# ===========================
+# Sourced by gemma-phenotyper-meta.s and run-gemma-phenotyper.s. Bash variable
+# substitutions (e.g. $(wc -l ...)) are evaluated at source time.
+
+configFile=gemma-phenotyper-config.txt
+
+# ---------------------------------------------------------------------------
+# Batch inputs (one row per sample; row N across every file = sample N).
+# Pad any row that has no value with the literal string 'NULL'.
+# ---------------------------------------------------------------------------
+spe_file=batch-inputs/spe_files.txt          # SpatialExperiment / SCE .rds paths
+out_dir=batch-inputs/out_dirs.txt            # output directory per sample
+labels=batch-inputs/labels.txt               # output filename prefix per sample
+cluster_cols=batch-inputs/cluster_cols.txt   # colData cluster column per sample
+tissues=batch-inputs/tissues.txt             # tissue context per sample (or NULL)
+
+# ---------------------------------------------------------------------------
+# Backend (global — applies to every sample in the batch)
+#   hf     : HuggingFace weights loaded in-process by infer.py. Runs fully
+#            offline once the weights are on disk — the HPC option.
+#   ollama : HTTP call to a running Ollama server. Needs ${ollama_host} to be
+#            reachable FROM THE COMPUTE NODES, which usually rules it out on a
+#            cluster. Kept for off-cluster/dev use.
+# ---------------------------------------------------------------------------
+backend=hf
+
+# ---------------------------------------------------------------------------
+# Prompt style (independent of backend)
+#   zero-shot : tissue + top/bottom 10% most distinctive markers. Use with a
+#               model that was NOT fine-tuned on your ontology (e.g. an
+#               off-the-shelf gemma-3-*-it-qat-q4_0-unquantized base).
+#   ontology  : every marker as marker=value plus the ${ontology} table. Use
+#               with a checkpoint fine-tuned against that ontology.
+# ---------------------------------------------------------------------------
+prompt_style=zero-shot
+
+# -- hf backend ------------------------------------------------------------
+# model_dir is a merged checkpoint OR a LoRA adapter directory; the type is
+# auto-detected from config.json / adapter_config.json, and the architecture
+# class is read from that config — Gemma 3 and Gemma 4 (incl. the "unified"
+# 12B) both load without code changes, given a new enough transformers
+# (Gemma 3 >=4.50, Gemma 4 >=5.10). Point it at shared storage: compute nodes
+# are usually offline, so pre-download the weights on a login node (see README).
+#   Gemma 3 12B: google/gemma-3-12b-it-qat-q4_0-unquantized  (gated)
+#   Gemma 4 12B: google/gemma-4-12B-it-qat-q4_0-unquantized  (Apache-2.0)
+model_dir=/gpfs/data/abl/tric/ee699/models/gemma-4-12B-it-qat-q4_0-unquantized
+base_model=google/gemma-3-1b-it              # only used when model_dir is an adapter
+load_in_8bit=false                           # needs bitsandbytes
+ontology=                                    # ontology text file (blank = built-in default)
+gemma_python=python3                         # interpreter with torch/transformers/PEFT
+
+# HuggingFace cache root. Set this to project storage, not $HOME — cluster home
+# directories are usually quota'd well under a 12B checkpoint (~24 GB), and
+# hf_xet also stages chunks here during download. Exported into every array
+# task, so it applies on the compute nodes too rather than only in whatever
+# shell ran sbatch.
+#
+# A plain ${model_dir} directory is read straight from disk and needs no cache.
+# It matters when ${model_dir} is a LoRA adapter: ${base_model} is then an HF
+# repo id that must already be cached HERE, because the tasks run offline.
+hf_home=/gpfs/data/abl/tric/ee699/.cache/huggingface
+
+# -- ollama backend --------------------------------------------------------
+ollama_host=http://localhost:11434
+ollama_model=gemma3:12b-it-qat
+temperature=0                                # 0 = greedy: identical input -> identical
+                                             # label, which a reproducible batch run needs.
+                                             # Raise only for N-sample voting (see README).
+
+# ---------------------------------------------------------------------------
+# Pipeline parameters (global)
+# ---------------------------------------------------------------------------
+mode=cluster                                 # cluster (fast) | cell (one call per cell)
+markers=                                     # comma-separated subset (blank = all rownames)
+harmonize=true                               # collapse near-duplicate labels
+
+# N-sample voting on clusters that came back "Unclassified". The model's own
+# confidence is not informative (~0.95 for almost everything), so each such
+# cluster is re-sampled vote_samples times and the agreement rate is used as an
+# empirical confidence instead. Runs in-process on both backends, so the HF
+# checkpoint is not reloaded. 0 disables.
+#
+# vote_temperature MUST be > 0: the main pass is greedy, so 0 would return N
+# identical samples. Clusters where the min_z floor fired (no elevated markers
+# at all) are re-sampled for diagnosis but never overridden unless
+# vote_override_floor=true — a majority there is the model guessing from nothing.
+vote_samples=0                               # 10 is a reasonable setting
+vote_temperature=0.7
+vote_min_agreement=0.6                       # fraction needed to replace the label
+vote_override_floor=false
+marker_glossary=                             # path to a marker glossary; see
+                                             # marker-glossary-example.txt. Strongly
+                                             # recommended for panels with transcription
+                                             # factors or alias-named markers.
+min_z=0.5                                    # zero-shot only: a marker counts as
+                                             # "elevated" only above this value;
+                                             # clusters with none are answered
+                                             # Unclassified instead of guessed
+export_loom=false                            # also write .loom alongside .rds
+
+# ---------------------------------------------------------------------------
+# SLURM parameters for the array job
+#
+# Sized for backend=hf with a 12B checkpoint: bf16 weights are ~24 GB, so the
+# job needs a GPU with at least that much VRAM (A100 40/80GB, H100), or
+# load_in_8bit=true to roughly halve it. Host memory should comfortably exceed
+# the checkpoint size because weights stream through RAM on load.
+#
+# For backend=ollama the job itself is light (no weights loaded locally) — a
+# CPU partition and ~16GB is plenty.
+# ---------------------------------------------------------------------------
+batch_size=$(wc -l ${spe_file} | awk '{print $1}')   # auto-computed from primary list
+module1_Path=run-gemma-phenotyper.s          # array-task launcher (in this dir)
+module1_mem=64GB                             # host memory per task
+module1_time=0-8                             # wall time (D-HH)
+module1_partition=gpu4_short                 # SLURM partition (site-specific)
+module1_gres=gpu:1                           # GPU request; set empty for backend=ollama

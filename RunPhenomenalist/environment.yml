@@ -44,6 +44,12 @@ dependencies:
   - bioconductor-spatialexperiment
   - bioconductor-summarizedexperiment
 
+  # SpatialExperiment -> AnnData (.h5ad) export, used by --export-anndata /
+  # export-anndata.R. Pulls in bioconductor-basilisk, which provisions its
+  # own isolated Python env (anndata) on first use — do this once on a
+  # login node with internet access before relying on it in offline batch jobs.
+  - bioconductor-zellkonverter
+
 # After env creation, install the phenomenalist GitHub package with:
 #   conda activate runphenomenalist
 #   Rscript -e 'remotes::install_github("igordot/phenomenalist")'

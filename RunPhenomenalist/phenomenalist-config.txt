@@ -21,6 +21,7 @@ classifier_labels=batch-inputs/labels.txt               # classifier labels per 
 max_cells=3000000                                       # subsample threshold
 phenotyping_template=                                   # gating template CSV (leave blank for none)
 skip_cols=                                              # optional regex override (leave blank for auto-detect)
+export_anndata=False                                    # True/False — also write spe.h5ad (AnnData) alongside spe.rds
 
 # clustering_res accepts:
 #   '1,2,3'  -> explicit list  c(1, 2, 3)

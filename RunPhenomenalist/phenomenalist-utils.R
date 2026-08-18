@@ -697,6 +697,43 @@ cluster.mod=function (x, method = c("leiden"), resolution = 1, n_neighbors = 50,
 }
 
 # ---------------------------------------------------------------------------
+# export_anndata.mod(spe, out_dir, filename, X_name)
+#
+# Writes a SingleCellExperiment / SpatialExperiment (as produced by
+# create_object.mod / cluster.mod) out as an AnnData .h5ad file, alongside
+# spe.rds, via the Bioconductor 'zellkonverter' package.
+#
+# SpatialExperiment keeps cell coordinates in a dedicated `spatialCoords`
+# slot that zellkonverter does not know about, so they are copied into a
+# `reducedDim` named "spatial" first — this lands them at `adata.obsm
+# ['spatial']`, the convention scanpy/squidpy expect.
+# ---------------------------------------------------------------------------
+export_anndata.mod <- function(spe, out_dir, filename = "spe.h5ad", X_name = "counts") {
+  if (!is(spe, "SingleCellExperiment")) {
+    stop("input is not a SingleCellExperiment/SpatialExperiment object")
+  }
+  if (!requireNamespace("zellkonverter", quietly = TRUE)) {
+    stop("the 'zellkonverter' package is required for AnnData export. Install with:\n",
+         "  BiocManager::install(\"zellkonverter\")")
+  }
+  if (!dir.exists(out_dir)) {
+    stop("output directory `", out_dir, "` does not exist")
+  }
+  if (is(spe, "SpatialExperiment") && !"spatial" %in% SingleCellExperiment::reducedDimNames(spe)) {
+    SingleCellExperiment::reducedDim(spe, "spatial") <- SpatialExperiment::spatialCoords(spe)
+  }
+  x_name <- if (X_name %in% SummarizedExperiment::assayNames(spe)) {
+    X_name
+  } else {
+    SummarizedExperiment::assayNames(spe)[1]
+  }
+  out_path <- file.path(out_dir, filename)
+  message("exporting AnnData (X = '", x_name, "' assay): ", out_path)
+  zellkonverter::writeH5AD(spe, out_path, X_name = x_name)
+  invisible(out_path)
+}
+
+# ---------------------------------------------------------------------------
 # .detect_segmentation_format(x)
 #
 # Inspects the column headers of a segmentation CSV (path or already-loaded
@@ -708,9 +745,17 @@ cluster.mod=function (x, method = c("leiden"), resolution = 1, n_neighbors = 50,
 #              columns and/or HALO metadata columns (Classification, Completeness).
 #   "mesmer" — Mesmer-style table with a (label, y, x[, size, *_min/*_max])
 #              header block followed by bare marker columns.
+#   "codex"  — Per-cell quantitative export (CODEX / PhenoCycler / Visiopharm /
+#              CellProfiler-style) with explicit stat-suffix column names:
+#              <marker>_Mean_intensity, <marker>_P25_intensity, etc. alongside
+#              morphometric shape descriptors (Compactness, Elongation, …).
+#              Only <marker>_Mean_intensity columns are used as expression; all
+#              other stat suffixes and shape columns are pushed to metadata.
 #
 # QuPath is checked first because QuPath exports may contain substrings that
 # would otherwise trip HALO heuristics (e.g. "Cell" in "CD3: Cell: Mean").
+# CODEX is checked before Mesmer because CODEX tables may contain x/y columns
+# that would otherwise trigger the Mesmer heuristic.
 #
 # If no fingerprint matches, emits a warning and falls back to "halo" (the
 # historical default). Users can bypass detection by passing an explicit
@@ -734,6 +779,14 @@ cluster.mod=function (x, method = c("leiden"), resolution = 1, n_neighbors = 50,
   halo_hits <- grepl("(?i)(Cell|Nucleus|Cytoplasm|Membrane)[ .]Intensity|Classification|Completeness",
                      cols, perl = TRUE)
   if (any(halo_hits)) return("halo")
+  # CODEX / quantitative stat-suffix exports: tables with explicit _Mean_intensity
+  # columns alongside other per-pixel stat suffixes (_P25_intensity, _Max_intensity,
+  # etc.) and/or morphometric shape descriptors (Compactness, Elongation, …).
+  # Both conditions must be present to avoid false-positives on custom tables that
+  # happen to have one but not the other.
+  codex_intensity <- any(grepl("_Mean_intensity", cols, fixed = TRUE))
+  codex_stats     <- any(grepl("_(Max|Min|Median|P\\d+|Std_dev)_intensity", cols, perl = TRUE))
+  if (codex_intensity && codex_stats) return("codex")
   # Mesmer: bare label/y/x header block.
   mesmer_base <- c("label", "y", "x")
   if (all(mesmer_base %in% cols)) return("mesmer")

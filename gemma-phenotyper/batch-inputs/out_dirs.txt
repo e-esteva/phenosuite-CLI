@@ -1,0 +1,3 @@
+/gpfs/data/myLab/spatial/sampleA/gemma
+/gpfs/data/myLab/spatial/sampleB/gemma
+/gpfs/data/myLab/spatial/sampleC/gemma

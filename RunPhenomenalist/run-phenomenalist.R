@@ -63,6 +63,9 @@ Options:
                               non-marker columns. Use this when the segmentation
                               schema is non-standard or auto-detection is wrong.
                                                                       [default: auto]
+  --export-anndata=BOOL       Also write spe.h5ad (AnnData) alongside spe.rds.
+                              Requires the Bioconductor 'zellkonverter' package.
+                                                                      [default: false]
   -h, --help                  Show this help and exit.
 
 Sentinels that all mean 'not set' for any option value:
@@ -127,6 +130,14 @@ parse_numeric <- function(x, flag) {
   v
 }
 
+parse_bool <- function(x, flag, default = FALSE) {
+  if (is_unset(x)) return(default)
+  v <- tolower(trimws(as.character(x)))
+  if (v %in% c("true", "t", "yes", "y", "1")) return(TRUE)
+  if (v %in% c("false", "f", "no", "n", "0")) return(FALSE)
+  die(flag, " must be true/false (got '", x, "')")
+}
+
 ## ---------------------------------------------------------------------------
 ## Script-directory discovery (for sourcing sibling files portably)
 ## ---------------------------------------------------------------------------
@@ -165,7 +176,8 @@ opts <- list(
   classifier_label     = NULL,
   max_cells            = "100000",
   phenotyping_template = NULL,
-  skip_cols            = NULL
+  skip_cols            = NULL,
+  export_anndata       = "false"
 )
 
 flag_slot <- list(
@@ -177,7 +189,8 @@ flag_slot <- list(
   "--classifier-label"     = "classifier_label",
   "--max-cells"            = "max_cells",
   "--phenotyping-template" = "phenotyping_template",
-  "--skip-cols"            = "skip_cols"
+  "--skip-cols"            = "skip_cols",
+  "--export-anndata"       = "export_anndata"
 )
 
 has_flags <- any(grepl("^--", raw))
@@ -239,6 +252,7 @@ nuclear_markers      <- parse_list(opts$nuclear_markers)
 classifier_label     <- parse_list(opts$classifier_label)
 phenotyping_template <- if (is_unset(opts$phenotyping_template)) NULL else opts$phenotyping_template
 skip_cols            <- if (is_unset(opts$skip_cols)) NULL else as.character(opts$skip_cols)
+export_anndata       <- parse_bool(opts$export_anndata, "--export-anndata")
 
 if (!is.null(phenotyping_template) && !file.exists(phenotyping_template)) {
   die("phenotyping template not found: ", phenotyping_template)
@@ -258,6 +272,7 @@ show("nuclear_markers",      nuclear_markers)
 show("classifier_label",     classifier_label)
 show("phenotyping_template", phenotyping_template)
 show("skip_cols",            skip_cols)
+show("export_anndata",       export_anndata)
 message("=============================")
 
 ## ---------------------------------------------------------------------------
@@ -319,5 +334,6 @@ RunPhenomenalist(
   max.cells            = max_cells,
   min.cells            = 10,
   phenotyping_template = phenotyping_template,
-  skip_cols            = skip_cols
+  skip_cols            = skip_cols,
+  export_anndata       = export_anndata
 )

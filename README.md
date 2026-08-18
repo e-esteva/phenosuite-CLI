@@ -1,6 +1,6 @@
 # phenosuite-CLI
 
-Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles six independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
+Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles seven independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
 
 - **[segmentation](segmentation/)** — cell segmentation from multi-channel tissue images with four interchangeable routes: Segment Anything (SAM), DeepCell Mesmer, StarDist, and Cellpose (Python).
 - **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
@@ -8,6 +8,7 @@ Command-line interface for the core PhenoSuite pipelines, designed to run on SLU
 - **[spatial-dynamics](spatial-dynamics/)** — pairwise log-odds and multi-cell-type neighborhood enrichment for spatial cell–cell relationships (Python).
 - **[merfish](merfish/)** — headless MERFISH spatial-transcriptomics pipeline: QC, normalization, clustering, neighborhood enrichment, spatially variable genes, and differential expression from cell × gene matrices (R).
 - **[neighborhood_analysis](neighborhood_analysis/)** — KNN niche composition matrix, LOO stability sweep to select optimal neighbourhood count K₂, and MiniBatchKMeans assignment across multi-sample SpatialExperiment cohorts (R + Python).
+- **[gemma-phenotyper](gemma-phenotyper/)** — LLM cluster annotation with a Gemma model from HuggingFace weights, running offline on GPU nodes (R + Python).
 
 The **segmentation** module's centroid-table output feeds directly into **RunPhenomenalist**, whose downstream `mask-inputs/` output in turn feeds **masquerade** — the three modules form one segmentation → phenotyping → visualization chain.
 
@@ -27,12 +28,14 @@ Each module is a self-contained `sbatch`-driven array job: a config file declare
    - [spatial-dynamics](#spatial-dynamics)
    - [merfish](#merfish)
    - [neighborhood_analysis](#neighborhood_analysis)
+   - [gemma-phenotyper](#gemma-phenotyper)
 5. [Image preprocessing (QuPath crops for SAM)](#image-preprocessing-qupath-crops-for-sam)
 6. [Configuration reference](#configuration-reference)
 7. [Active vs. legacy files](#active-vs-legacy-files)
 8. [Run logs](#run-logs)
 9. [Known limitations](#known-limitations)
 10. [Troubleshooting](#troubleshooting)
+11. [License & Citation](#license--citation)
 
 ---
 
@@ -63,6 +66,7 @@ phenosuite-CLI/
 ├── RunPhenomenalist/                         # R pipeline: scaling + dimensionality reduction + clustering
 │   ├── RunPhenomenalist.R                    #   core pipeline function
 │   ├── run-phenomenalist.R                   #   CLI wrapper (parses 9 positional args)
+│   ├── export-anndata.R                      #   standalone spe.rds -> spe.h5ad converter
 │   ├── phenomenalist-utils.R                 #   plotting / clustering / cell-type utilities
 │   ├── phenomenalist-config.txt              #   batch config (edit this)
 │   ├── phenomenalist-meta.s                  #   SLURM entry point — `sbatch` this
@@ -131,20 +135,40 @@ phenosuite-CLI/
 │   │   └── sample_ids.txt
 │   └── run-logs-batch/                       #   timestamped run logs (generated)
 │
-└── neighborhood_analysis/                    # R pipeline: KNN niche + LOO sweep + neighbourhood assignment
-    ├── run-neighborhood_analysis.R           #   CLI wrapper (named flags + positional; standalone-runnable)
-    ├── neighborhood_analysis-utils.R         #   Python backend (sklearn KNN / MiniBatchKMeans) + R fallback + plot helpers
-    ├── neighborhood_analysis-config.txt      #   batch config (edit this)
-    ├── neighborhood_analysis-meta.s          #   SLURM entry point — `sbatch` this
-    ├── run-neighborhood_analysis.s           #   SLURM array task (called by meta)
+├── neighborhood_analysis/                    # R pipeline: KNN niche + LOO sweep + neighbourhood assignment
+│   ├── run-neighborhood_analysis.R           #   CLI wrapper (named flags + positional; standalone-runnable)
+│   ├── neighborhood_analysis-utils.R         #   Python backend (sklearn KNN / MiniBatchKMeans) + R fallback + plot helpers
+│   ├── neighborhood_analysis-config.txt      #   batch config (edit this)
+│   ├── neighborhood_analysis-meta.s          #   SLURM entry point — `sbatch` this
+│   ├── run-neighborhood_analysis.s           #   SLURM array task (called by meta)
+│   ├── makeRunLog-batch.sh                   #   captures config + input lists per run
+│   ├── environment.yml                       #   conda env spec (r-base=4.4 + sklearn/scipy/numpy)
+│   ├── batch-inputs/                         #   line-aligned per-run inputs
+│   │   ├── rds_files.txt                     #     .rds SpatialExperiment paths (; within a run = multi-sample)
+│   │   ├── celltype_cols.txt
+│   │   ├── out_dirs.txt
+│   │   ├── labels.txt
+│   │   └── condition_maps.txt
+│   └── run-logs-batch/                       #   timestamped run logs (generated)
+│
+└── gemma-phenotyper/                         # R pipeline: LLM cluster annotation (Gemma)
+    ├── RunGemmaPhenotyper.R                  #   core pipeline function
+    ├── run-gemma-phenotyper.R                #   CLI wrapper (named flags)
+    ├── gemma-utils.R                         #   prompts, Ollama client, harmonisation
+    ├── vectra-export.R                       #   Vectra-format CSV writer
+    ├── loom-export.R                         #   .loom writer
+    ├── infer.py                              #   transformers/PEFT backend (local checkpoints)
+    ├── environment.yml                       #   conda env spec (R + Bioconductor)
+    ├── gemma-phenotyper-config.txt           #   batch config (edit this)
+    ├── gemma-phenotyper-meta.s               #   SLURM entry point — `sbatch` this
+    ├── run-gemma-phenotyper.s                #   SLURM array task (called by meta)
     ├── makeRunLog-batch.sh                   #   captures config + input lists per run
-    ├── environment.yml                       #   conda env spec (r-base=4.4 + sklearn/scipy/numpy)
-    ├── batch-inputs/                         #   line-aligned per-run inputs
-    │   ├── rds_files.txt                     #     .rds SpatialExperiment paths (; within a run = multi-sample)
-    │   ├── celltype_cols.txt
+    ├── batch-inputs/                         #   line-aligned per-sample inputs
+    │   ├── spe_files.txt
     │   ├── out_dirs.txt
     │   ├── labels.txt
-    │   └── condition_maps.txt
+    │   ├── cluster_cols.txt
+    │   └── tissues.txt
     └── run-logs-batch/                       #   timestamped run logs (generated)
 ```
 
@@ -157,6 +181,39 @@ Every module ships a conda `environment.yml` — RunPhenomenalist installs an R 
 ### Cluster
 
 - A **SLURM** cluster. Partition names in the shipped configs (`a100_short`, `cpu_dev`) are site-specific — edit them for your cluster before running.
+
+### Conda storage location
+
+`conda`/`mamba` put both environments and the package cache under `$HOME/.conda` (`envs/` and `pkgs/`) by default — easy to blow a small home-directory quota once the Bioconductor and torch stacks used here are involved. Redirect both to lab storage **once, before creating any env below**:
+
+```bash
+conda config --add envs_dirs /gpfs/data/abl/tric/<you>/conda/envs
+conda config --add pkgs_dirs /gpfs/data/abl/tric/<you>/conda/pkgs
+```
+
+This writes to `~/.condarc` and changes *where* a named env is stored, not how you refer to it, so nothing else in this repo needs to change: every launcher activates envs by name (`source activate masquerade`, `conda activate runphenomenalist`, …), and name-based activation searches all registered `envs_dirs`. `conda env create -f environment.yml` and `conda create -n <name> …` (used for the separate `gemma-infer` Python env) both pick it up automatically.
+
+Equivalent one-off, if you'd rather not touch `~/.condarc` (e.g. inside a single shell or job script):
+
+```bash
+export CONDA_ENVS_PATH=/gpfs/data/abl/tric/<you>/conda/envs
+export CONDA_PKGS_DIRS=/gpfs/data/abl/tric/<you>/conda/pkgs
+```
+
+Already created an env under `$HOME` before setting this? Move it rather than reinstalling:
+
+```bash
+mv ~/.conda/envs/runphenomenalist /gpfs/data/abl/tric/<you>/conda/envs/
+conda info --envs   # confirm it now resolves at the new path
+```
+
+`pip` (used inside `gemma-infer`) keeps its own cache under `$HOME/.cache/pip` regardless of the conda settings above — redirect it too if that matters for your quota:
+
+```bash
+export PIP_CACHE_DIR=/gpfs/data/abl/tric/<you>/.cache/pip
+```
+
+Two more caches live outside conda entirely and are covered where they're introduced rather than here: HuggingFace model weights for gemma-phenotyper (`HF_HOME`, see [Prerequisites > gemma-phenotyper](#gemma-phenotyper)) and the Python env `zellkonverter`/`basilisk` builds for RunPhenomenalist's AnnData export (see [Known limitations](#known-limitations)) — the latter installs under the R library path by default, not `$HOME/.conda`, so check `BASILISK_EXTERNAL_DIR` in your installed `basilisk` version's docs if it needs to move too.
 
 ### segmentation
 
@@ -191,6 +248,7 @@ What [environment.yml](RunPhenomenalist/environment.yml) pins:
 - CRAN deps of phenomenalist: `cowplot`, `data.table`, `dplyr`, `FNN`, `ggplot2`, `ggsci`, `glue`, `igraph`, `janitor`, `RColorBrewer`, `readr`, `rlang`, `scattermore`, `stringr`, `tibble`, `tidyr`, `tidyselect`, `tidyverse`, `uwot`
 - Extra CRAN deps used by `RunPhenomenalist.R` / `phenomenalist-utils.R`: `circlize`, `mclust`
 - Bioconductor deps: `ComplexHeatmap`, `MatrixGenerics`, `scran`, `scuttle`, `SingleCellExperiment`, `SpatialExperiment`, `SummarizedExperiment`
+- Optional AnnData export: `zellkonverter` (pulls in `basilisk`, which provisions its own Python env on first use — see [Known limitations](#known-limitations))
 
 The local `RunPhenomenalist/phenomenalist-utils.R` file is still sourced at runtime — it provides `create_object.mod`, `cluster.mod`, `plot_heatmap.mod_v1`, `plot_dr.mod`, `plot_spatial.mod`, `prepare_mask_inputs`, `phenomenalist.preprocess`, and `assign_celltype_with_template`, which are local modifications / helpers not in the public package.
 
@@ -263,6 +321,70 @@ What [environment.yml](neighborhood_analysis/environment.yml) pins:
 - Python: `python=3.11`, `numpy<2`, `scipy`, `scikit-learn`, `psutil` (optional — enables memory logging)
 
 The Python packages activate the high-performance backend automatically at runtime. If sklearn / scipy / numpy are absent, the pipeline falls back silently to RANN (R KNN) + base `kmeans`. The `run-neighborhood_analysis.s` launcher runs `module load r/4.4.0` (site-specific); on a conda-only system, remove that line and `conda activate neighborhoodr` before `sbatch`.
+### gemma-phenotyper
+
+Create the conda env from the shipped spec — the launchers expect it to be named `gemma-phenotyper`:
+
+```bash
+cd gemma-phenotyper/
+conda env create -f environment.yml
+# or, if the env already exists:
+conda env update -f environment.yml --prune
+```
+
+The spec installs an R runtime plus `r-curl`, `r-jsonlite`, the SpatialExperiment/SingleCellExperiment Bioconductor stack, and `r-hdf5r` (only needed for `--export-loom`). See [gemma-phenotyper/environment.yml](gemma-phenotyper/environment.yml).
+
+**The `hf` backend — the default, and the only one that works on an offline compute node — needs a second Python env** with torch/transformers, pointed at by `gemma_python` in the config. It is deliberately kept out of `environment.yml` so the R and Python stacks can be provisioned independently and a CUDA build of torch can be chosen per cluster:
+
+```bash
+conda create -n gemma-infer python=3.10 && conda activate gemma-infer
+pip install torch --index-url https://download.pytorch.org/whl/cu121 \
+    "transformers>=4.50.0" "peft>=0.10.0" "accelerate>=0.28.0" "bitsandbytes>=0.43.0"
+```
+
+`transformers>=4.50.0` is the floor where Gemma 3 landed in a stable release. Swap the `--index-url` for `.../whl/cpu` if you have no GPU (expect it to be very slow for a 12B model).
+
+**Pre-download the weights on a login node.** Gemma checkpoints on HuggingFace are gated (you must accept Google's license once, while logged in), and compute nodes are usually offline — the array tasks run with `HF_HUB_OFFLINE=1` and will not fetch anything:
+
+```bash
+huggingface-cli login
+huggingface-cli download google/gemma-3-12b-it-qat-q4_0-unquantized \
+    --local-dir /gpfs/data/myLab/models/gemma-3-12b-it-qat-q4_0-unquantized
+```
+
+Gemma 4 is Apache-2.0 and ungated, so it needs no `login` — but it does need `transformers>=5.10.0`:
+
+```bash
+hf download google/gemma-4-12B-it-qat-q4_0-unquantized \
+    --local-dir /gpfs/data/myLab/models/gemma-4-12B-it-qat-q4_0-unquantized
+```
+
+**Set `HF_HOME` to project storage first.** It defaults to `$HOME/.cache/huggingface`, and most clusters quota `$HOME` well below a 12B checkpoint (`gemma-4-12B-it-qat-q4_0-unquantized` is a single unsharded 23.9 GB `model.safetensors`). `hf_xet` also stages chunks there during the transfer, so it matters even when you pass `--local-dir`:
+
+```bash
+export HF_HOME=/gpfs/data/myLab/.cache/huggingface
+```
+
+Set the same value as `hf_home=` in the config; the array tasks export it, so it applies on the compute nodes rather than only in the shell that ran `sbatch`.
+
+Useful checks before committing to a 24 GB transfer:
+
+```bash
+hf download <repo> --local-dir <dest> --dry-run   # exact files + sizes, downloads nothing
+hf env                                            # prints the resolved HF_HUB_CACHE
+df -h <dest>                                      # confirm free space
+hf cache verify <repo> --local-dir <dest>         # verify integrity afterwards
+```
+
+Point `model_dir` at whichever directory you downloaded. Browse available Gemma models — including newer generations as Google releases them — at [ai.google.dev/gemma](https://ai.google.dev/gemma).
+
+**The optional `ollama` backend** needs no Python at all, only a reachable server — convenient off-cluster, rarely viable on one:
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve
+ollama pull gemma3:12b-it-qat
+```
 
 ---
 
@@ -270,6 +392,7 @@ The Python packages activate the high-performance backend automatically at runti
 
 All modules follow the same pattern:
 
+0. **One-time setup:** create the module's conda env — RunPhenomenalist and gemma-phenotyper also need a one-time package / model-weights step. If you're quota-constrained on `$HOME`, redirect conda's storage **before** running any `conda env create` below — see [Conda storage location](#conda-storage-location). Full picture for everything else (Java for masquerade, gated weight downloads for gemma-phenotyper, etc.) is in [Prerequisites](#prerequisites); the essentials are repeated below.
 1. Edit the config file (`*-config*.txt`) in the module directory.
 2. Add one line per sample to each file in `batch-inputs/` — **line N across every file = sample N**. The array size is auto-computed from the line count of the primary input list.
 3. Submit the meta launcher with `sbatch`.
@@ -308,6 +431,13 @@ python run_segmentation.py \
 
 ```bash
 cd RunPhenomenalist/
+# 0. One-time: create the conda env and install the phenomenalist package.
+#    (The sbatch launcher itself runs `module load r/4.1.2`, not this env —
+#    but the package must still be installed somewhere `library(phenomenalist)`
+#    can find it, and this is the env the single-sample CLI below expects.)
+conda env create -f environment.yml
+conda activate runphenomenalist
+Rscript -e 'remotes::install_github("igordot/phenomenalist")'
 # 1. Edit phenomenalist-config.txt (clustering_res, SLURM params, etc.)
 vi phenomenalist-config.txt
 # 2. Populate batch-inputs/ — one line per sample in each file; use 'NULL' for empty rows
@@ -324,6 +454,7 @@ sbatch phenomenalist-meta.s
 To run the underlying CLI on a single sample outside of SLURM (useful for debugging):
 
 ```bash
+conda activate runphenomenalist
 Rscript run-phenomenalist.R --help
 Rscript run-phenomenalist.R \
     --segmentation-file=/data/sample1.csv \
@@ -336,6 +467,9 @@ Rscript run-phenomenalist.R \
 
 ```bash
 cd masquerade/
+# 0. One-time: create the conda env (Java 17 for bfconvert is loaded automatically
+#    by the launcher via `module load java/17.0.0` — see Prerequisites)
+conda env create -f environment.yml
 # 1. Edit configFile-batch.txt (radius, filled, target_size, SLURM params)
 vi configFile-batch.txt
 # 2. Populate batch-inputs/ — one line per sample in each file
@@ -351,6 +485,8 @@ sbatch run-masquerade.s
 
 ```bash
 cd spatial-dynamics/
+# 0. One-time: create the conda env
+conda env create -f environment.yml
 # 1. Edit config-spatial_dynamics.txt — pick module=0 (PWLO) or module=1 (circuit)
 vi config-spatial_dynamics.txt
 # 2. Populate batch-inputs/ — one line per sample in each file
@@ -417,6 +553,47 @@ Rscript run-neighborhood_analysis.R \
     --celltype-col=celltype \
     --k1=10 \
     --condition-map=s1=treated,s2=control,s3=control
+```
+
+---
+
+### gemma-phenotyper
+
+```bash
+cd gemma-phenotyper/
+# 0. One-time: create the R env, plus a separate Python env for the hf backend,
+#    then download model weights on a login node (gated — see Prerequisites for
+#    the full walkthrough, HF_HOME sizing, and the ollama alternative)
+conda env create -f environment.yml
+conda create -n gemma-infer python=3.10 && conda activate gemma-infer
+pip install torch --index-url https://download.pytorch.org/whl/cu121 \
+    "transformers>=4.50.0" "peft>=0.10.0" "accelerate>=0.28.0" "bitsandbytes>=0.43.0"
+huggingface-cli login
+huggingface-cli download google/gemma-3-12b-it-qat-q4_0-unquantized \
+    --local-dir /gpfs/data/myLab/models/gemma-3-12b-it-qat-q4_0-unquantized
+# 1. Edit gemma-phenotyper-config.txt — model_dir, prompt_style, GPU partition/gres
+vi gemma-phenotyper-config.txt
+# 2. Populate batch-inputs/ — one line per sample in each file; use 'NULL' for empty rows
+vi batch-inputs/spe_files.txt
+vi batch-inputs/out_dirs.txt
+vi batch-inputs/labels.txt
+vi batch-inputs/cluster_cols.txt
+vi batch-inputs/tissues.txt
+# 3. Submit. gemma-phenotyper-meta.s pre-validates row alignment AND the selected
+#    backend (model tag set / checkpoint dir exists) before calling sbatch.
+sbatch gemma-phenotyper-meta.s
+```
+
+Single sample, no SLURM:
+
+```bash
+Rscript run-gemma-phenotyper.R \
+    --spe-file=/path/to/spe.rds \
+    --out-dir=/path/to/out \
+    --cluster-col=cluster_1 \
+    --model-dir=/gpfs/data/myLab/models/gemma-3-12b-it-qat-q4_0-unquantized \
+    --python=$(conda run -n gemma-infer which python) \
+    --tissue='human lymph node'
 ```
 
 ---
@@ -571,6 +748,7 @@ Pass `--skip-cols=REGEX` to override the column-filter regex for custom schemas 
 Written under each `${out_dir}/out-phenomenalist/`:
 
 - `spe.rds` — serialized `SpatialExperiment` with expression, coordinates, and cluster assignments
+- `spe.h5ad` — AnnData copy of the same object, written when `--export-anndata=true` (coordinates land in `adata.obsm['spatial']`); see [AnnData export](#anndata-export)
 - `*-heatmap.png` — per-cluster marker expression heatmaps
 - `UMAP-expression/` — UMAP plots colored by each marker
 - `spatial-expression/` — tissue-space plots colored by each marker
@@ -591,7 +769,8 @@ Rscript run-phenomenalist.R \
     --classifier-label="${classifier_label_tmp}" \
     --max-cells="${max_cells}" \
     --phenotyping-template="${phenotyping_template}" \
-    --skip-cols="${skip_cols}"
+    --skip-cols="${skip_cols}" \
+    --export-anndata="${export_anndata}"
 ```
 
 Full option reference:
@@ -609,6 +788,7 @@ Optional:
   --max-cells=N               cell subsample threshold                      [default: 100000]
   --phenotyping-template=PATH manual-gating template CSV                    [default: none]
   --skip-cols=REGEX           override column-filter regex (else auto)      [default: auto]
+  --export-anndata=BOOL       also write spe.h5ad (AnnData) alongside spe.rds [default: false]
   -h, --help                  show help and exit
 ```
 
@@ -625,6 +805,22 @@ One environment variable controls local sibling-file discovery:
 | `PHENOMENALIST_DIR` | Directory holding `RunPhenomenalist.R` and `phenomenalist-utils.R`. Auto-detected from the script location; override only if you've split the files. |
 
 `phenomenalist-meta.s` and `run-phenomenalist.s` both set `PHENOMENALIST_DIR` to their own directory automatically.
+
+#### AnnData export
+
+`spe.rds` can also be exported as an AnnData `.h5ad` file (via the Bioconductor [`zellkonverter`](https://bioconductor.org/packages/zellkonverter/) package) for use in scanpy / squidpy. `spatialCoords(spe)` is copied into a `reducedDim` named `"spatial"` before conversion, so it lands in `adata.obsm['spatial']`; the `counts` assay becomes `adata.X` and any other assays (`exprs`, `logcounts`, …) become `adata.layers`.
+
+Two ways to get it:
+
+1. **During the pipeline run** — pass `--export-anndata=true` (or set `export_anndata=True` in `phenomenalist-config.txt` for batch runs) and `spe.h5ad` is written next to `spe.rds` automatically.
+2. **From an existing `spe.rds`**, without re-running clustering — use the standalone converter:
+   ```bash
+   Rscript export-anndata.R --spe-rds=/data/sample1/out/out-phenomenalist/sample1/spe.rds
+   # writes spe.h5ad next to spe.rds; override with --out=PATH, and the exported
+   # assay with --assay=NAME (default: counts)
+   ```
+
+Both paths call the same `export_anndata.mod()` helper in `phenomenalist-utils.R` and require the `zellkonverter` package — see [Known limitations](#known-limitations) for a note on first-use setup.
 
 #### batch-inputs/ format
 
@@ -843,8 +1039,6 @@ Every file in [merfish/batch-inputs/](merfish/batch-inputs/) holds **one row per
 
 The coordinate / area / negative-control / volume **column names** are global (set once in the config) and must exist in every sample's metadata file. `batch_size=$(wc -l < ${expression_file})` picks up the line count automatically.
 
-**To add a sample:** append one line to each file above.
-
 ---
 
 ### neighborhood_analysis
@@ -947,6 +1141,188 @@ Every file in [neighborhood_analysis/batch-inputs/](neighborhood_analysis/batch-
 | `condition_maps.txt` | condition assignment string, or `NULL` | `s1=treated,s2=control,s3=control` |
 
 **To add a cohort:** append one line to each file above.
+
+---
+
+### gemma-phenotyper
+
+#### What it does
+
+Assigns a cell-type label to every cluster (or every cell) in a `SpatialExperiment` / `SingleCellExperiment` by asking a Gemma model. It is the batch counterpart to PhenoSuite's `gemma_phenotyper` Shiny app, and shares its prompt-construction and inference code.
+
+Two backends, selected with `backend=` in the config:
+
+| Backend | How it runs | Needs |
+|---|---|---|
+| `hf` (default) | HuggingFace-format weights — a merged checkpoint or LoRA adapter, fine-tuned or an off-the-shelf base — loaded in-process by `infer.py`. Runs fully offline once the weights are on disk, so this is the HPC option. | `model_dir` + a Python env with torch/transformers (`gemma_python`), and a GPU for anything above ~4B |
+| `ollama` | HTTP call per cluster to a running Ollama server. No weights loaded in the job. | `ollama_host` reachable **from the compute nodes** and a pulled `ollama_model` |
+
+`local` is accepted as an alias for `hf`.
+
+#### Prompt styles
+
+Prompt style is independent of backend, set with `prompt_style=`:
+
+| Style | What the model sees | Use when |
+|---|---|---|
+| `zero-shot` (default) | Tissue context + only the most distinctive markers for that cluster (top/bottom 10% by mean value, highest first) | The model was **not** fine-tuned on your ontology — e.g. an off-the-shelf `gemma-3-*-it-qat-q4_0-unquantized` base |
+| `ontology` | Every marker as `marker=value`, plus an explicit ontology table | The checkpoint **was** fine-tuned against that ontology |
+
+`zero-shot` sends the surviving markers highest-value-first, and states which assay the numbers came from (`exprs` arcsinh-scaled if present, else `scaled`, else z-scored `counts`) so the model isn't reading bare values with no sense of range:
+
+> *System:* "You are an expert immunologist."
+> *User:* "What cell type is described by `FOXP3:3.428, CD25:1.750, CD4:1.178, CD20:-0.147`? This is a `{tissue}`. Respond with ONLY JSON in the form {"cell_type": "\<3-word answer\>", "confidence": \<0-1\>} — no markdown, no explanation."
+
+`ontology` sends every marker as `marker=value` alongside the ontology text:
+
+> *System:* "You are a cellular phenotyping assistant for mIF data. Return JSON only."
+> *User:* "Phenotype this cell cluster.\nCluster: `{id}` (n=`{n}` cells)\nMean markers (`{assay}`): `CD3=2.145, CD4=1.882, ...`\nOntology: `{ontology_text}`"
+
+#### Model compatibility across Gemma generations
+
+`infer.py` does not hardcode a Gemma generation. It reads the architecture class named in the checkpoint's own `config.architectures` and looks it up on the installed `transformers`, and decides multimodality structurally (does the config carry a `vision_config` / `audio_config` / `text_config`?) rather than by matching a `model_type` string. This matters because every generation so far has changed both:
+
+| Checkpoint | `model_type` | Architecture class |
+|---|---|---|
+| `gemma-3-1b-it` | text-only | `Gemma3ForCausalLM` |
+| `gemma-3-12b-it-qat-q4_0-unquantized` | `gemma3` | `Gemma3ForConditionalGeneration` |
+| `gemma-4-E2B/E4B/31B` | `gemma4` | `Gemma4ForCausalLM` / `Gemma4ForConditionalGeneration` |
+| `gemma-4-12B-it-qat-q4_0-unquantized` | `gemma4_unified` | `Gemma4UnifiedForConditionalGeneration` |
+
+So a newer checkpoint generally needs **a new enough `transformers`, not a new pipeline**. If the installed `transformers` doesn't know the architecture, `infer.py` logs which class it wanted and falls back to an Auto class rather than crashing — but upgrading `transformers` is the real fix.
+
+| Generation | `transformers` floor | Gating |
+|---|---|---|
+| Gemma 3 | `>=4.50.0` | Gated — accept Google's license, `huggingface-cli login` before downloading |
+| Gemma 4 | `>=5.10.0` | Apache-2.0, ungated |
+
+`gemma-4-12B`'s config declares `transformers_version: 5.10.0.dev0` — a **major** version jump from Gemma 3's floor, so treat that upgrade as a deliberate step (verify your other pinned deps) rather than a drop-in.
+
+Multimodal checkpoints are loaded with their full architecture but prompted text-only — no images are ever sent.
+
+**Gemma 4 thinking mode.** Gemma 4 models are reasoners with a configurable thinking mode that, when on, emits a `<|channel>thought …<channel|>` block *before* the answer — which would turn every prediction into a parse failure. `infer.py` pins `enable_thinking=False` in the chat template (falling back silently for Gemma 3 templates, which don't accept the kwarg), and additionally strips thinking blocks and ```` ``` ```` fences before parsing, then falls back to extracting the first balanced `{…}` span. So a stray reasoning trace or a "Sure, here's the JSON:" preamble still yields a usable label instead of an `unknown`.
+
+#### Retrying failed clusters
+
+A cluster is labelled `unknown` when it produced no usable answer — either a `request_failure` (the call errored or timed out) or a `parse_failure` (a reply came back but no `cell_type` could be extracted). Neither is a confidence judgement; there is no confidence threshold anywhere in the pipeline, and the `confidence: 0` on those rows is a hardcoded placeholder, not the model's own number.
+
+Both are transient in principle, so the CLI retries them automatically: `--retry=N` (default 1) makes extra passes over just the failed prompts. On the `hf` backend the retry happens **inside the same `infer.py` process**, while the checkpoint is still resident — a fresh invocation would pay the full multi-minute load again to redo a handful of prompts. Set `--retry=0` to disable. Anything still failing afterwards is reported in the run log and keeps its `error`/`raw` columns in `*_gemma_predictions.csv`.
+
+The Shiny app surfaces the same recovery as a **"Re-run Failed Clusters"** button in Step 4, which appears only when a run left failures. It re-requests just those prompts, merges any successes back into the predictions file, and then re-runs harmonisation, plots and exports so every downstream artefact reflects the recovered labels.
+
+#### Marker glossary (strongly recommended)
+
+A zero-shot model only knows markers it has read about. Anything named ambiguously, or cited mainly in specialist literature, it guesses at — **confidently**. Measured on a 39-plex human lymph-node panel with `gemma3:12b-it-qat`:
+
+| Asked | Answered | Correct |
+|---|---|---|
+| which lineage is **TCF4**? | Regulatory T cells (0.95) | pDC |
+| which lineage is **E2-2**? (same protein) | Plasma cells (0.95) | pDC |
+| what co-expresses **TCF4 + IRF8 + CD123**? | Regulatory Tfh cells (0.95) | **pDC** |
+
+TCF4 (E2-2) is the master transcription factor of plasmacytoid dendritic cells, and TCF4+IRF8+CD123 is a textbook pDC signature. The model reads "TCF4" as *T-cell factor* and commits at 0.95 — and renaming to E2-2 is differently wrong, not better. A pure 3,554-cell pDC cluster was consequently annotated *Macrophage*, recall **0.00**, in every prompt variant tested. No rewording fixes a wrong, confident prior.
+
+Supplying the mapping does:
+
+```bash
+--marker-glossary=marker-glossary-example.txt     # CLI
+marker_glossary=/path/to/glossary.txt             # config
+```
+
+On that same cluster: **`T follicular helper` (0.85) → `Plasmacytoid dendritic cell` (0.95)**.
+
+**Write one for your own panel.** Copy [marker-glossary-example.txt](gemma-phenotyper/marker-glossary-example.txt) and edit. Format is `MARKER = short gloss`, one per line, `#` for comments; names match case- and punctuation-insensitively (`PD_1` / `PD-1` / `PD1` all hit). Only entries for a cluster's *elevated* markers are injected, so a long glossary costs no tokens on clusters that don't use those markers.
+
+Include the markers a general-purpose model would plausibly get wrong:
+
+- **transcription factors** — TCF4, IRF8, IRF4, PAX5, FOXP3
+- **alias names that collide with other genes** — TCF4, S100, duplicate clones like CD103/CD103II
+- **markers whose meaning is tissue-specific** — CD35, CD21, CD23 on follicular dendritic cells
+- **anything you would argue about in a lab meeting**
+
+Leave out markers with one unambiguous textbook meaning (CD3e, CD20, CD8) — the model already knows those and restating them only adds tokens.
+
+#### Empirical confidence (N-sample voting)
+
+The `confidence` the model returns is not informative — across a 49-cluster run it emitted ~0.95 for almost everything, including a cluster where every marker was below average. Set `vote_samples` in the config to replace it with a measured one:
+
+```bash
+vote_samples=10            # 0 disables
+vote_temperature=0.7       # must be > 0; the main pass is greedy
+vote_min_agreement=0.6     # fraction needed to replace the label
+vote_override_floor=false
+```
+
+Each cluster that came back `Unclassified` is re-sampled `vote_samples` times, the modal label wins, and the agreement rate becomes the `confidence`. The vote distribution is written to `*_gemma_predictions.csv` as `vote_top`, `vote_agreement`, `vote_n`, `vote_basis` and `vote_detail`, so it is auditable even when the label doesn't change.
+
+`vote_temperature` must exceed 0 — the main pass runs greedy (`temperature=0`) for reproducibility, so sampling at 0 would return N identical answers.
+
+**Two kinds of `Unclassified` are treated differently.** When the `min_z` floor fired, the prompt literally says *no markers are elevated*; a majority label there is the model inventing a lineage from nothing, which is what the floor exists to prevent. Those are re-sampled for diagnosis (`vote_basis = no_elevated_markers`) but never overridden unless you set `vote_override_floor=true`. Clusters where the model declined *despite* having elevated markers (`vote_basis = model_declined`) can be overridden once agreement clears `vote_min_agreement`.
+
+Voting runs **in-process on both backends** — inside `infer.py` for `hf`, so a 12B checkpoint is loaded once rather than once per pass. Cost scales directly: `vote_samples=10` means 10 extra generations per `Unclassified` cluster, so budget wall time accordingly on a large batch.
+
+#### Harmonisation
+
+Because each cluster is labelled in an independent call, the same population often comes back spelled several ways (`Regulatory T cell` / `Treg cell` / `T regulatory`). With `harmonize=true` (default) one extra generation maps every unique label to a canonical Title-Case form before results are written, and the mapping is saved to `*_harmonisation-map.csv`.
+
+This runs on **both** backends. For `hf` it happens inside the same `infer.py` process, immediately after the main loop, so the checkpoint is loaded only once — a separate invocation would pay the full multi-minute load again just to map a handful of labels. If the model returns unparseable JSON the step degrades to keeping the raw labels rather than failing the run.
+
+#### Inputs
+
+| Input | Notes |
+|---|---|
+| `spe_files.txt` | `SpatialExperiment` or `SingleCellExperiment` `.rds`. Intensities are read from `exprs`, else `scaled`, else z-scored `counts`. |
+| `cluster_cols.txt` | `colData` column holding cluster IDs. Required when `mode=cluster`. |
+| `tissues.txt` | Tissue context injected into the prompt and used as the Vectra tissue fallback. Use `NULL` to omit. |
+
+#### Outputs
+
+Written to that sample's `out_dir`, prefixed with its label:
+
+| File | Contents |
+|---|---|
+| `*_spe_gemma_annotated.rds` | input object plus `gemma_cell_type` / `gemma_confidence` in `colData` |
+| `*_gemma_predictions.csv` | per-cluster model output, including `error`/`raw` for failed calls |
+| `*_gemma_celltype-summary.csv` | cell counts per assigned type, descending |
+| `*_gemma_colData.csv` | full `colData` dump |
+| `*_harmonisation-map.csv` | raw → canonical label mapping (`ollama` + `harmonize=true`) |
+| `vectra_gemma_*.csv` | Vectra-format export for PCF-toolkit compatibility (SpatialExperiment only) |
+| `*_gemma_annotated.loom` | optional, with `export_loom=true` |
+| `*_prompts.jsonl`, `*_predictions.jsonl` | exact prompts sent and raw responses — keep these for auditing |
+
+#### Entry point and orchestration
+
+[gemma-phenotyper-meta.s](gemma-phenotyper/gemma-phenotyper-meta.s) validates that every `batch-inputs/` file has at least `batch_size` rows **and** that the selected backend is usable, then submits [run-gemma-phenotyper.s](gemma-phenotyper/run-gemma-phenotyper.s) as `--array=1-${batch_size}`. Each array task extracts row `SLURM_ARRAY_TASK_ID` from every list and calls `run-gemma-phenotyper.R` with named flags. Only the flags the chosen backend reads are passed, so an unset value for the other backend can never be misread.
+
+For `backend=hf` the pre-submit checks are: `model_dir` exists and holds a `config.json` or `adapter_config.json`; actual weight files (`*.safetensors` / `*.bin`) are present, since the tasks run offline and will not download them (a LoRA adapter is exempted, with a note that its base must already be cached); and `gemma_python` can import torch/transformers — a warning only, since compute nodes may load a different env. `--gres` is passed through from `module1_gres`; blank it for `ollama` so the job is not queued behind GPU availability it never uses.
+
+For `backend=ollama`, reachability is checked from the *submit* host and is a warning, not a hard failure — compute nodes often have different network access, and that is what actually matters.
+
+#### Running Ollama on a compute node (optional)
+
+Prefer `backend=hf` on a cluster — it needs no network at all. If you nonetheless want the Ollama path and no shared server is reachable, start one inside the job and point the config at localhost. Add to the top of `run-gemma-phenotyper.s`:
+
+```bash
+ollama serve &
+until curl -sf http://localhost:11434/api/tags >/dev/null; do sleep 2; done
+ollama pull "${ollama_model}"
+```
+
+This costs a model load per array task, so it suits small batches; for larger ones prefer a persistent server on a node the cluster can reach.
+
+#### batch-inputs/ format
+
+Line-aligned, one row per sample across every file in [gemma-phenotyper/batch-inputs/](gemma-phenotyper/batch-inputs/):
+
+| File | Contents |
+|---|---|
+| `spe_files.txt` | absolute path to the `.rds` object |
+| `out_dirs.txt` | absolute path to output directory |
+| `labels.txt` | sample label / output filename prefix |
+| `cluster_cols.txt` | `colData` cluster column for that sample |
+| `tissues.txt` | tissue context, or `NULL` |
+
+**To add a sample:** append one line to each file above.
 
 ---
 
@@ -1053,6 +1429,7 @@ max_cells=3000000                                    # int — subsample thresho
 phenotyping_template=                                # optional gating template CSV (leave blank for none)
 skip_cols=                                           # optional regex override (leave blank for auto-detect)
 clustering_res=1,2                                   # comma list ('1,2,3') or range ('5:7' → c(5,6,7))
+export_anndata=False                                 # True/False — also write spe.h5ad (AnnData) alongside spe.rds
 
 # SLURM parameters
 batch_size=$(wc -l ${segmentation_file} | awk '{print $1}')   # auto-computed
@@ -1210,6 +1587,62 @@ module1_partition=cpu_short                             # SLURM partition (site-
 
 ---
 
+### [gemma-phenotyper/gemma-phenotyper-config.txt](gemma-phenotyper/gemma-phenotyper-config.txt)
+
+```bash
+configFile=gemma-phenotyper-config.txt
+
+# Batch-input file paths (line-aligned; row N = sample N)
+spe_file=batch-inputs/spe_files.txt          # per-sample SpatialExperiment / SCE .rds paths
+out_dir=batch-inputs/out_dirs.txt            # per-sample output directories
+labels=batch-inputs/labels.txt               # per-sample output filename prefixes
+cluster_cols=batch-inputs/cluster_cols.txt   # per-sample colData cluster column
+tissues=batch-inputs/tissues.txt             # per-sample tissue context (or NULL)
+
+# Backend: hf = HuggingFace weights in-process (offline-capable, the HPC option)
+#          ollama = HTTP to a running server (needs compute-node reachability)
+backend=hf
+
+# Prompt style: zero-shot = tissue + most distinctive markers (not fine-tuned)
+#               ontology  = all markers + ontology table (fine-tuned checkpoint)
+prompt_style=zero-shot
+
+# -- hf backend --
+model_dir=/gpfs/data/myLab/models/gemma-3-12b-it-qat-q4_0-unquantized
+base_model=google/gemma-3-1b-it      # only used when model_dir is a LoRA adapter
+load_in_8bit=false                   # halves VRAM; requires bitsandbytes
+ontology=                            # ontology text file (blank = built-in default)
+gemma_python=python3                 # interpreter with torch/transformers/PEFT
+hf_home=/gpfs/.../.cache/huggingface # HF cache root; exported into every array task
+
+# -- ollama backend --
+ollama_host=http://localhost:11434
+ollama_model=gemma3:12b-it-qat
+temperature=0.2
+
+# Pipeline parameters (global)
+mode=cluster               # cluster = one call per cluster; cell = one call per cell (slow)
+markers=                   # comma-separated subset (blank = all rownames)
+harmonize=true             # collapse near-duplicate labels
+vote_samples=0             # N-sample vote on Unclassified clusters (0 = off, 10 typical)
+vote_temperature=0.7       # must be > 0; main pass is greedy
+vote_min_agreement=0.6     # fraction of votes needed to replace the label
+vote_override_floor=false  # allow voting to override no-elevated-marker clusters
+export_loom=false          # also write .loom alongside the annotated .rds
+
+# SLURM parameters
+batch_size=$(wc -l ${spe_file} | awk '{print $1}')   # auto-computed from primary list
+module1_Path=run-gemma-phenotyper.s                  # array-task launcher
+module1_mem=64GB                                     # host memory per task
+module1_time=0-8                                     # wall time (D-HH)
+module1_partition=gpu4_short                         # SLURM partition (site-specific)
+module1_gres=gpu:1                                   # GPU request; blank for backend=ollama
+```
+
+Sizing for `backend=hf`: a 12B checkpoint in bf16 is roughly 24 GB, so the task needs a GPU with at least that much VRAM (A100 40/80GB, H100) or `load_in_8bit=true` to approximately halve it. Host memory should comfortably exceed the checkpoint size because the weights stream through RAM on load. For `backend=ollama` the job holds no weights at all — a CPU partition with ~16 GB and a blank `module1_gres` is plenty.
+
+---
+
 ## Active vs. legacy files
 
 The repository carries several older versions alongside the current implementations. Edit the **active** files; the legacy ones are retained for reference.
@@ -1236,6 +1669,7 @@ Each module ships a `makeRunLog-batch.sh` that creates a timestamped file in `ru
 - [masquerade/makeRunLog-batch.sh](masquerade/makeRunLog-batch.sh) — called automatically at the end of [run-masquerade-batch.sh](masquerade/run-masquerade-batch.sh:73); writes to [masquerade/run-logs-batch/](masquerade/run-logs-batch/).
 - [merfish/makeRunLog-batch.sh](merfish/makeRunLog-batch.sh) — invoke manually before/after a run; writes to `merfish/run-logs-batch/`.
 - [neighborhood_analysis/makeRunLog-batch.sh](neighborhood_analysis/makeRunLog-batch.sh) — called automatically at the end of [run-neighborhood_analysis.s](neighborhood_analysis/run-neighborhood_analysis.s); writes to `neighborhood_analysis/run-logs-batch/`.
+- [gemma-phenotyper/makeRunLog-batch.sh](gemma-phenotyper/makeRunLog-batch.sh) — invoke manually after a run; writes to [gemma-phenotyper/run-logs-batch/](gemma-phenotyper/run-logs-batch/). The per-sample `*_prompts.jsonl` / `*_predictions.jsonl` written into each `out_dir` are the finer-grained audit trail — they record the exact text sent to the model and its raw reply.
 
 SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch` from.
 
@@ -1251,6 +1685,14 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 - **`run-pwlo.py` hard-codes `draw=False` and `compute_effect_size=False`** ([run-pwlo.py:13](spatial-dynamics/run-pwlo.py)) even though the config exposes those keys. Patch the wrapper if you need them.
 - ** [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s) does not extract `${spatial_obj}` / `${out_dir}` / `${label}` from the batch-input lists on a per-array-task basis. Expect to fix both before using the circuit-enrichment path.
 - **`relevant_markers` is per-batch, not per-sample.** `run-masquerade-batch.sh` reads row N of `marker-metadata-batch.txt` like the other inputs, so to use one marker list across all samples you must repeat it on every line.
+- **AnnData export needs network access the first time it runs.** `zellkonverter` provisions its own isolated Python env via `basilisk` on first use. SLURM compute nodes are often offline, so do one `--export-anndata=true` run (or `Rscript export-anndata.R …`) on a login node with internet access before relying on the flag inside array jobs.
+- **gemma-phenotyper's `hf` backend reloads the checkpoint once per array task.** Each sample is an independent task, so a 12B checkpoint is loaded from disk for every one — several minutes of wall time per task before any inference starts. For a large batch of small samples that overhead can dominate; consider merging samples into fewer `.rds` objects, or raising `module1_time` accordingly.
+- **`HF_HOME` defaults to `$HOME`, which is usually too small.** A 12B checkpoint is ~24 GB and cluster home directories are often quota'd below that. Set `hf_home=` in the config (it is exported into every array task) and export the same value in the shell you download from. A plain `model_dir` directory is read straight from disk and needs no cache — but a LoRA adapter's `base_model` is an HF repo id that must already be cached there, because the tasks run with `HF_HUB_OFFLINE=1`. `gemma-phenotyper-meta.s` warns pre-submit if that cache looks empty.
+- **Gated weights must be pre-downloaded on a login node.** Gemma checkpoints require accepting Google's license while logged in, and the array tasks run with `HF_HUB_OFFLINE=1`. `gemma-phenotyper-meta.s` refuses to submit if `model_dir` has no `*.safetensors`/`*.bin`, but it cannot verify a LoRA adapter's *base* model is cached on the nodes — that one will only surface at runtime.
+- **The `ollama` backend needs the server reachable from compute nodes, not just the submit host.** `gemma-phenotyper-meta.s` checks reachability from wherever you run `sbatch` and only warns on failure, because that check cannot speak for the compute nodes. If tasks come back with every cluster labelled `unknown` and `error=request_failure`, the nodes could not reach `ollama_host`.
+- **A slow model can blow the per-request timeout (`ollama` backend).** Calls exceeding `--timeout` (default 600 s) are recorded as `request_failure` predictions labelled `unknown` rather than aborting the run — deliberate, so one slow cluster does not lose a whole sample, but a partially-`unknown` output is a real result you should check `*_gemma_predictions.csv` for.
+- **`confidence` from the zero-shot backend is not calibrated.** In practice the model returns 0.95 for nearly every cluster regardless of evidence strength. Treat it as decorative, not as a quality filter.
+- **Zero-shot accuracy is bounded by the marker panel.** Only the top/bottom 10% most distinctive markers per cluster reach the prompt, and populations that need markers outside that slice (or absent from the panel entirely) can be confidently mislabelled. Harmonisation makes labels *consistent*, not *correct* — spot-check against the marker values in `*_prompts.jsonl`.
 
 ---
 
@@ -1270,6 +1712,8 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 | masquerade run succeeds but no `.ome.tiff` is found at the end | The launcher locates the output by running `ls -t ${out_dir}/${base}*.ome.tiff` — wrong `out_dir` permissions or an unexpected `basename` will make it miss | Check the directory of `outPath` in [configFile-batch.txt](masquerade/configFile-batch.txt) and confirm [masquerade_interface.py](masquerade/masquerade_interface.py) wrote the file; see [run-masquerade-batch.sh:34-39](masquerade/run-masquerade-batch.sh) |
 | spatial-dynamics runs the wrong analysis | `module` set to `0` when you wanted `1`, or vice versa | Edit `module=` in [config-spatial_dynamics.txt](spatial-dynamics/config-spatial_dynamics.txt) |
 | `sbatch` rejects the job immediately | Partition name is site-specific (`a100_short`, `cpu_dev`) | Update every `*_partition` key in the configs and every `#SBATCH --partition=` header to match your cluster |
+| `--export-anndata=true` / `export-anndata.R` errors with `'zellkonverter' package is required` | Package not installed in the active R library | `Rscript -e 'BiocManager::install("zellkonverter")'`, or re-provision the conda env from the updated [environment.yml](RunPhenomenalist/environment.yml) |
+| AnnData export hangs or fails on a download/network error inside a SLURM job | `basilisk` (zellkonverter's Python backend) is trying to build its env on an offline compute node | Run once with `--export-anndata=true` on a login node with internet access to build the env first, then resubmit |
 
 ---
 

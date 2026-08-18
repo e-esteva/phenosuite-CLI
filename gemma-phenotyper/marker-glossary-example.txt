@@ -1,0 +1,92 @@
+# marker-glossary-example.txt
+# ===========================
+# Example glossary for a 39-plex human lymph-node CODEX panel. Passed to the
+# zero-shot prompt via `marker_glossary=` so the model is told what the
+# non-obvious markers in YOUR panel mean, instead of being left to guess.
+#
+# WHY THIS EXISTS
+# ---------------
+# A zero-shot model only knows markers it has seen described in text. Anything
+# named ambiguously, or cited mainly in specialist literature, it will guess at
+# — confidently. Measured on this panel with gemma3:12b-it-qat:
+#
+#   "which lineage is TCF4?"                 -> "Regulatory T cells"   (conf 0.95)
+#   "which lineage is E2-2?"                 -> "Plasma cells"         (conf 0.95)
+#   "what co-expresses TCF4+IRF8+CD123?"     -> "Regulatory Tfh cells" (conf 0.95)
+#
+# All three are wrong: TCF4 (E2-2) is the master transcription factor of
+# plasmacytoid dendritic cells, and TCF4+IRF8+CD123 is a textbook pDC signature.
+# The model reads "TCF4" as T-cell factor and commits. Renaming to E2-2 does not
+# help — it is differently wrong. Consequently a pure 3,554-cell pDC cluster in
+# the ALPS sample was called "Macrophage" with recall 0.00, in every prompt
+# variant tested. No wording change fixes a wrong, confident prior; only telling
+# the model the mapping does.
+#
+# FORMAT
+# ------
+#   MARKER = short gloss naming the lineage(s) it marks
+# One per line. '#' comments and blank lines ignored. Marker names are matched
+# case- and punctuation-insensitively against the (cleaned) panel names, so
+# PD_1 / PD-1 / PD1 all match. Only markers that appear among a cluster's
+# elevated set are injected into that prompt, so a long glossary costs nothing.
+#
+# WHAT TO INCLUDE
+# ---------------
+# Not every marker. Include the ones a general-purpose model would plausibly
+# get wrong:
+#   * transcription factors (TCF4, IRF8, IRF4, PAX5, FOXP3)
+#   * clone/alias names that collide with other genes (TCF4, S100, CD103II)
+#   * markers whose meaning is tissue-specific (CD35, CD21, CD23 on FDCs)
+#   * anything whose lineage assignment you would argue about in a lab meeting
+# Leave out markers with one unambiguous textbook meaning (CD3e, CD20, CD8) —
+# the model already knows those, and restating them only adds tokens.
+
+# --- transcription factors: the highest-risk group ------------------------
+TCF4    = E2-2; master transcription factor of plasmacytoid dendritic cells (pDC). NOT T-cell factor / TCF7L2
+IRF8    = transcription factor of pDC and cDC1; also monocyte/macrophage lineage
+IRF4    = transcription factor of cDC2, plasma cells and activated lymphocytes
+PAX5    = B-lineage commitment factor; lost on plasma-cell differentiation
+FOXP3   = regulatory T cell (Treg) lineage factor
+
+# --- dendritic cell subsets ----------------------------------------------
+CD123   = IL3RA; plasmacytoid dendritic cells (with TCF4/IRF8); also basophils and mast cells
+CLEC9A  = DNGR-1; near-exclusive to cDC1
+CD11c   = conventional dendritic cells and myeloid cells broadly
+Fascin  = mature/activated dendritic cells
+
+# --- follicular dendritic cells (stromal, NOT hematopoietic) -------------
+CD35    = CR1; follicular dendritic cell meshwork in germinal centres; also erythrocytes
+CD21    = CR2; follicular dendritic cells and mature B cells
+CD23    = follicular dendritic cells and activated B cells
+
+# --- macrophage / myeloid -------------------------------------------------
+CD68    = pan-macrophage/monocyte lysosomal marker
+CD163   = haptoglobin-haemoglobin scavenger receptor; M2-polarised macrophages
+C1qA    = complement C1q; tissue macrophages
+Mac2Gal3 = Galectin-3; macrophages and other myeloid cells
+CD11b   = myeloid cells: macrophages, monocytes, granulocytes
+MPO     = myeloperoxidase; neutrophils and myeloid precursors
+CD15    = granulocytes, particularly neutrophils
+
+# --- plasma cell / B lineage ---------------------------------------------
+CD138   = syndecan-1; plasma cells and plasmablasts
+CD38    = plasma cells and activated lymphocytes; not lineage-restricted
+
+# --- T cell state (NOT lineage) ------------------------------------------
+CD25    = IL2RA; Tregs with FOXP3, but also any recently activated T cell
+PD_1    = exhaustion/activation on T cells; high on T follicular helper cells
+CD103   = integrin alpha-E; tissue-resident memory T cells and a cDC1 subset
+CD103II = second CD103 clone in this panel; interpret together with CD103
+
+# --- stromal / vascular ---------------------------------------------------
+CD31    = PECAM-1; vascular endothelium
+Podoplanin = lymphatic endothelium and fibroblastic reticular cells
+CD34    = haematopoietic progenitors and vascular endothelium
+
+# --- other ambiguous ------------------------------------------------------
+S100    = dendritic cells, Langerhans cells, melanocytes and nerve; NOT lineage-specific alone
+Tryptase = mast cells
+BCL_2   = anti-apoptotic; low in germinal centre B cells, high in mantle/naive B cells
+Ki67    = proliferation; a state qualifier, never a lineage
+CD40    = activated antigen-presenting cells: B cells, DCs, macrophages
+HLA_DR  = MHC class II; antigen-presenting cells, and activation marker on T cells

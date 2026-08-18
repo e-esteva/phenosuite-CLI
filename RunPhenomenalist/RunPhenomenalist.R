@@ -1,4 +1,4 @@
-RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=NULL,mask.only=NULL,out_dir=getwd(),clustering_res=seq(5,7),classifier_label=NULL,min.cells=10,else_cytoplasm=F,max.cells=1e5,phenotyping_template=NULL,skip_cols=NULL){
+RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=NULL,mask.only=NULL,out_dir=getwd(),clustering_res=seq(5,7),classifier_label=NULL,min.cells=10,else_cytoplasm=F,max.cells=1e5,phenotyping_template=NULL,skip_cols=NULL,export_anndata=FALSE){
   suppressPackageStartupMessages({
     library(phenomenalist)
     library(tidyverse)
@@ -30,19 +30,19 @@ RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=
   data_loc=segmentation_file
 
   # ---------------------------------------------------------------------------
-  # Auto-detect segmentation format (HALO / Mesmer / QuPath) from the column
-  # headers, unless the caller has supplied an explicit skip_cols regex.
+  # Auto-detect segmentation format (HALO / Mesmer / QuPath / CODEX) from the
+  # column headers, unless the caller has supplied an explicit skip_cols regex.
   #
   # Default skip_cols by format:
   #   HALO,   no nuclear markers   : drop HALO metadata + per-compartment cols
   #   HALO,   with nuclear markers : drop HALO metadata only (compartment cols
   #                                  are disambiguated by phenomenalist.preprocess)
   #   Mesmer                       : drop common blank / DAPI / channel-number cols
-  #   QuPath                       : drop object metadata (Image, Name, Class,
-  #                                  Parent, ROI), centroid columns, shape
-  #                                  descriptors (Area, Perimeter, Circularity,
-  #                                  Solidity, Caliper, Eccentricity, diameter),
-  #                                  summary counts, and DAPI
+  #   QuPath                       : drop object metadata, shape descriptors, DAPI
+  #   CODEX                        : keep ONLY <marker>_Mean_intensity columns;
+  #                                  drop all other per-pixel stat suffixes
+  #                                  (_Max, _Min, _Median, _P##, _Std_dev) and
+  #                                  morphometric shape descriptors
   # failed.markers are appended to the regex in all cases.
   # ---------------------------------------------------------------------------
   if (is.null(skip_cols)) {
@@ -65,6 +65,18 @@ RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=
         # NOT filtered here — the centroid columns must survive this step so
         # create_object.mod can rename them to x/y downstream.
         "Area|Perimeter|Circularity|Solidity|Caliper|Eccentricity|diameter|",
+        # Nuclear counterstain.
+        "DAPI"
+      ),
+      codex  = paste0(
+        # Keep only _Mean_intensity per marker; drop all other per-pixel stats.
+        "_Max_intensity|_Min_intensity|_Median_intensity|",
+        "_(P[0-9]+)_intensity|_Std_dev_intensity|",
+        # Morphometric / shape descriptors (not marker expression).
+        "Compactness|Convexity|Eccentricity|Elongation|Extent|Solidity|",
+        "Euler_number|Orientation|Circular_diameter|",
+        "Major_axis|Minor_axis|Longest_axis|Area_convex|Min_rot_rect|",
+        "Area|Perimeter|",
         # Nuclear counterstain.
         "DAPI"
       )
@@ -122,7 +134,8 @@ RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=
     spe = cluster.mod(spe, resolution = resolutions, out_dir = out_dir)
     names(colData(spe))
     saveRDS(spe,glue(out_dir,'/spe.rds'))
-    
+    if (isTRUE(export_anndata)) export_anndata.mod(spe, out_dir)
+
     cluster_cols = stringr::str_subset(names(colData(spe)), "cluster_leiden")
     
     for(i in seq(length(cluster_cols))){
@@ -162,7 +175,8 @@ RunPhenomenalist=function(segmentation_file,failed.markers=NULL,nuclear.markers=
     spe = cluster.mod(spe, resolution = resolutions, out_dir = out_dir)
     print(names(colData(spe)))
     saveRDS(spe,glue(out_dir,'/spe.rds'))
-    
+    if (isTRUE(export_anndata)) export_anndata.mod(spe, out_dir)
+
     cluster_cols = stringr::str_subset(names(colData(spe)), "cluster_leiden")
     
     for(i in seq(length(cluster_cols))){

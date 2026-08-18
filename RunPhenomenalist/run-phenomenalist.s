@@ -72,6 +72,7 @@ echo "  clustering_res    : ${clustering_res}"
 echo "  max_cells         : ${max_cells}"
 echo "  phenotyping_tmpl  : ${phenotyping_template:-<none>}"
 echo "  skip_cols         : ${skip_cols:-<auto>}"
+echo "  export_anndata    : ${export_anndata:-False}"
 
 Rscript "${SCRIPT_DIR}/run-phenomenalist.R" \
     --segmentation-file="${segmentation_file_tmp}" \
@@ -82,4 +83,5 @@ Rscript "${SCRIPT_DIR}/run-phenomenalist.R" \
     --classifier-label="${classifier_label_tmp}" \
     --max-cells="${max_cells}" \
     --phenotyping-template="${phenotyping_template:-}" \
-    --skip-cols="${skip_cols:-}"
+    --skip-cols="${skip_cols:-}" \
+    --export-anndata="${export_anndata:-False}"

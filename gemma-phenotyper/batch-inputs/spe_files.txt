@@ -1,0 +1,3 @@
+/gpfs/data/myLab/spatial/sampleA/spe.rds
+/gpfs/data/myLab/spatial/sampleB/spe.rds
+/gpfs/data/myLab/spatial/sampleC/spe.rds
