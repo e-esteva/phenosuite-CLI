@@ -76,17 +76,37 @@ def build_pooled_niche_matrix(coords_list, ct_enc_list, n_cts, k1):
     return niche
 
 def loo_stability_sweep(niche_mat, ct_enc_r, samp_enc_r, n_samples,
-                        k_sweep_r, loo_n, loo_mode, agg, n_cts):
+                        k_sweep_r, loo_n, loo_mode, agg, n_cts,
+                        sample_group_r=None):
     nm = niche_mat
     ct_enc   = np.asarray(ct_enc_r,  dtype=np.int32).ravel()
     samp_enc = np.asarray(samp_enc_r, dtype=np.int32).ravel()
     k_sweep  = [int(k) for k in k_sweep_r]
     n_s = int(n_samples); n_cts = int(n_cts); loo_n = float(loo_n)
-    n_hold = max(1, min(int(loo_n), n_s - 1)) if loo_mode == 'count' \
-             else max(1, int(np.floor(n_s * loo_n / 100.0)))
-    n_iter  = min(n_s, 20)
-    rng     = np.random.default_rng(0)
-    loo_sets = [rng.choice(n_s, n_hold, replace=False) for _ in range(n_iter)]
+    rng    = np.random.default_rng(0)
+    n_iter = min(n_s, 20)
+    if loo_mode == 'group':
+        # sample_group_r: 0-indexed group-per-sample vector (e.g. timepoint,
+        # from --condition-col/--condition-map). Holds out loo_n samples from
+        # *every* group each fold, instead of drawing loo_n/pct from the
+        # pooled sample list, so a stratified design (N groups x R
+        # replicates) actually gets tested as intended.
+        sample_group = np.asarray(sample_group_r, dtype=np.int32).ravel()
+        groups       = np.unique(sample_group)
+        group_idx    = {g: np.where(sample_group == g)[0] for g in groups}
+        min_group_sz = min(len(idx) for idx in group_idx.values())
+        n_hold_per_group = max(1, min(int(loo_n), min_group_sz - 1))
+        if n_hold_per_group < 1 or len(groups) < 2:
+            return {'k': k_sweep, 'stability': [0.0] * len(k_sweep)}
+        loo_sets = [
+            np.concatenate([rng.choice(idx, n_hold_per_group, replace=False)
+                             for idx in group_idx.values()])
+            for _ in range(n_iter)
+        ]
+    else:
+        n_hold = max(1, min(int(loo_n), n_s - 1)) if loo_mode == 'count' \
+                 else max(1, int(np.floor(n_s * loo_n / 100.0)))
+        loo_sets = [rng.choice(n_s, n_hold, replace=False) for _ in range(n_iter)]
     agg_fn = np.median if agg == 'median' else np.mean
     def _nh_freq(assign, ct, k2):
         freq = np.zeros((k2, n_cts), dtype=np.float32)
@@ -211,16 +231,38 @@ compute_nh_freq <- function(assignments, ctypes, k2, all_cts) {
 }
 
 .r_loo_stability_sweep <- function(niche_mat, ctypes_vec, sample_labels,
-                                   k_sweep, loo_n, loo_mode, agg_fn) {
+                                   k_sweep, loo_n, loo_mode, agg_fn,
+                                   sample_group = NULL) {
   all_cts        <- colnames(niche_mat)
   unique_samples <- unique(sample_labels)
   n_s            <- length(unique_samples)
-  n_hold <- if (loo_mode == "count") min(as.integer(loo_n), n_s - 1L)
-            else max(1L, floor(n_s * loo_n / 100))
-  n_iters  <- min(n_s, 20L)
-  loo_sets <- lapply(seq_len(n_iters), function(i) {
-    set.seed(i); sample(unique_samples, n_hold)
-  })
+  n_iters        <- min(n_s, 20L)
+
+  if (loo_mode == "group") {
+    # sample_group: named vector, names = sample names, values = group label
+    # (e.g. timepoint, from --condition-col/--condition-map). Holds out
+    # loo_n samples from *every* group each fold, instead of drawing
+    # loo_n/pct from the pooled sample list.
+    groups       <- sample_group[unique_samples]
+    group_names  <- unique(groups)
+    group_idx    <- lapply(group_names, function(g) unique_samples[groups == g])
+    min_group_sz <- min(lengths(group_idx))
+    n_hold_per_group <- max(1L, min(as.integer(loo_n), min_group_sz - 1L))
+    if (n_hold_per_group < 1L || length(group_names) < 2L) {
+      return(data.frame(k = k_sweep, stability = rep(0, length(k_sweep))))
+    }
+    loo_sets <- lapply(seq_len(n_iters), function(i) {
+      set.seed(i)
+      unlist(lapply(group_idx, function(idx) sample(idx, n_hold_per_group)))
+    })
+  } else {
+    n_hold <- if (loo_mode == "count") min(as.integer(loo_n), n_s - 1L)
+              else max(1L, floor(n_s * loo_n / 100))
+    loo_sets <- lapply(seq_len(n_iters), function(i) {
+      set.seed(i); sample(unique_samples, n_hold)
+    })
+  }
+
   scores <- numeric(length(k_sweep))
   for (ki in seq_along(k_sweep)) {
     k2 <- k_sweep[ki]
@@ -441,17 +483,50 @@ run_neighborhood_analysis <- function(
     optimal_k2 <- as.integer(k2)
   } else {
     msg("Running LOO stability sweep (K2=", k2_min, " to ", k2_max_v, ")...")
+
+    # loo_mode="group": resolve one label per sample from condition_col /
+    # condition_map (same source used for the final condition annotation
+    # below), so held-out samples come from every group each fold instead
+    # of the pooled sample list.
+    sample_group_v <- NULL
+    if (loo_mode == "group") {
+      groups <- vapply(sample_names, function(s) {
+        if (!is.null(condition_col) &&
+            condition_col %in% colnames(colData(spe_list[[s]]))) {
+          v <- as.character(colData(spe_list[[s]])[[condition_col]])
+          v <- v[!is.na(v) & nchar(v)]
+          if (length(v)) v[1] else NA_character_
+        } else if (!is.null(condition_map) && !is.null(condition_map[[s]])) {
+          condition_map[[s]]
+        } else {
+          NA_character_
+        }
+      }, character(1))
+      names(groups) <- sample_names
+      if (anyNA(groups))
+        stop("--loo-mode=group requires every sample to have a condition label ",
+             "— set --condition-col or provide every sample in --condition-map.")
+      if (length(unique(groups)) < 2L)
+        stop("--loo-mode=group requires at least 2 distinct condition values across samples.")
+      sample_group_v <- groups
+    }
+
     if (nd$is_python) {
+      sample_group_enc <- if (!is.null(sample_group_v))
+        as.integer(match(sample_group_v[sample_names], unique(sample_group_v)) - 1L)
+      else NULL
       res <- py$loo_stability_sweep(
         nd$niche_mat, nd$ct_encoded_v, nd$samp_encoded,
-        nd$n_samples, k_sweep, loo_n, loo_mode, agg_fn_name, n_cts
+        nd$n_samples, k_sweep, loo_n, loo_mode, agg_fn_name, n_cts,
+        sample_group_r = sample_group_enc
       )
       sweep_df <- data.frame(k=as.integer(unlist(res$k)),
                              stability=as.numeric(unlist(res$stability)))
     } else {
       sweep_df <- .r_loo_stability_sweep(
         nd$niche_mat, nd$cell_types_v, nd$sample_labels,
-        k_sweep, loo_n, loo_mode, agg_fn
+        k_sweep, loo_n, loo_mode, agg_fn,
+        sample_group = sample_group_v
       )
     }
     optimal_k2 <- sweep_df$k[which.min(sweep_df$stability)]

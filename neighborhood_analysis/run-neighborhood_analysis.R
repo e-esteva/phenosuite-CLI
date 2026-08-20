@@ -63,8 +63,13 @@ Options:
   --k2=N                Use this fixed K2 — skips LOO sweep. [default: auto]
   --k2-min=N            LOO sweep lower bound.               [default: 3]
   --k2-max=N            LOO sweep upper bound.               [default: n_celltypes-1]
-  --loo-mode=STR        'count' or 'pct'.                    [default: count]
-  --loo-n=N             Hold-out count or percentage.        [default: 1]
+  --loo-mode=STR        'count', 'pct', or 'group'.          [default: count]
+                        'group' holds out --loo-n samples from *every*
+                        --condition-col/--condition-map group each fold
+                        (e.g. N timepoints x R replicates), instead of
+                        drawing from the pooled sample list.
+  --loo-n=N             Hold-out count, percentage, or per-group count
+                        (meaning depends on --loo-mode).      [default: 1]
   --agg-fn=STR          'median' or 'mean' stability metric. [default: median]
   --condition-col=NAME  colData column with condition labels. [default: none]
   --condition-map=STR   Manual labels: 'sample1=ctrl,sample2=treated'.
@@ -301,8 +306,10 @@ cond_col   <- if (is_unset(opts$condition_col)) NULL else opts$condition_col
 cond_map   <- parse_condition_map(opts$condition_map)
 make_plots <- !isTRUE(opts$no_plots)
 
-if (!loo_mode %in% c("count", "pct"))
-  die("--loo-mode must be 'count' or 'pct' (got '", loo_mode, "')")
+if (!loo_mode %in% c("count", "pct", "group"))
+  die("--loo-mode must be 'count', 'pct', or 'group' (got '", loo_mode, "')")
+if (loo_mode == "group" && is.null(cond_col) && is.null(cond_map))
+  die("--loo-mode=group requires --condition-col or --condition-map to define the groups")
 if (!agg_fn %in% c("median", "mean"))
   die("--agg-fn must be 'median' or 'mean' (got '", agg_fn, "')")
 
