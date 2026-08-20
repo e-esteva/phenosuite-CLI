@@ -1,7 +1,7 @@
 # neighborhood_analysis-utils.R
 # ─────────────────────────────────────────────────────────────────────────────
 # Core analysis functions for NeighborhoodR (KNN niche matrix + LOO stability
-# sweep + MiniBatchKMeans neighbourhood assignment).
+# sweep + MiniBatchKMeans neighborhood assignment).
 #
 # Sourced by run-neighborhood_analysis.R (CLI).
 # All heavy compute runs in Python when sklearn/scipy/numpy are available;
@@ -316,12 +316,12 @@ find_celltype_col <- function(spe) {
 
 # ─── Plot helpers ─────────────────────────────────────────────────────────────
 
-.spatial_plot <- function(spe, sname, colour_by="neighbourhood",
+.spatial_plot <- function(spe, sname, colour_by="neighborhood",
                           ct_col=NULL, pt_size=1.2, alpha=0.8) {
   df <- as.data.frame(spatialCoords(spe))
   colnames(df) <- c("x", "y")
-  df$colour <- if (colour_by == "neighbourhood") {
-    colData(spe)$neighbourhood
+  df$colour <- if (colour_by == "neighborhood") {
+    colData(spe)$neighborhood
   } else {
     if (!is.null(ct_col) && ct_col %in% colnames(colData(spe)))
       as.character(colData(spe)[[ct_col]]) else "unknown"
@@ -343,7 +343,7 @@ find_celltype_col <- function(spe) {
     spe    <- spe_list[[s]]
     ct_col <- ct_cols[[s]]
     if (is.null(ct_col) || !ct_col %in% colnames(colData(spe))) return(NULL)
-    data.frame(neighbourhood = colData(spe)$neighbourhood,
+    data.frame(neighborhood = colData(spe)$neighborhood,
                celltype      = as.character(colData(spe)[[ct_col]]),
                sample        = s)
   })
@@ -351,19 +351,19 @@ find_celltype_col <- function(spe) {
   if (is.null(df) || !nrow(df)) return(NULL)
 
   df_freq <- df |>
-    count(neighbourhood, celltype) |>
-    group_by(neighbourhood) |>
+    count(neighborhood, celltype) |>
+    group_by(neighborhood) |>
     mutate(prop = n / sum(n)) |>
     ungroup()
 
   pal_vec <- setNames(pal(length(unique(df_freq$celltype))),
                       sort(unique(df_freq$celltype)))
-  ggplot(df_freq, aes(neighbourhood, prop, fill=celltype)) +
+  ggplot(df_freq, aes(neighborhood, prop, fill=celltype)) +
     geom_col(position="stack", width=0.75) +
     scale_fill_manual(values=pal_vec) +
     scale_y_continuous(labels=percent_format()) +
-    labs(x="Neighbourhood", y="Proportion", fill="Cell type",
-         title="Celltype composition per neighbourhood") +
+    labs(x="Neighborhood", y="Proportion", fill="Cell type",
+         title="Celltype composition per neighborhood") +
     theme_minimal(base_size=11) +
     theme(axis.text.x=element_text(angle=30, hjust=1),
           plot.title=element_text(face="bold"))
@@ -475,12 +475,12 @@ run_neighborhood_analysis <- function(
   }
   rm(nd); gc(); mem_log("after final kmeans")
 
-  # 6. Write neighbourhood + sample into colData, cbind
-  msg("Writing neighbourhood assignments...")
+  # 6. Write neighborhood + sample into colData, cbind
+  msg("Writing neighborhood assignments...")
   ptr <- 1L
   for (s in sample_names) {
     n_c <- ncol(spe_list[[s]])
-    colData(spe_list[[s]])$neighbourhood <- paste0("N", assignments[ptr:(ptr+n_c-1L)])
+    colData(spe_list[[s]])$neighborhood <- paste0("N", assignments[ptr:(ptr+n_c-1L)])
     colData(spe_list[[s]])$sample        <- rep(s, n_c)
     if (!is.null(condition_col) &&
         condition_col %in% colnames(colData(spe_list[[s]]))) {
@@ -499,10 +499,10 @@ run_neighborhood_analysis <- function(
   saveRDS(joint_spe, rds_path)
   out$joint_spe <- rds_path
 
-  cd      <- as.data.frame(colData(joint_spe)[, c("sample","neighbourhood"), drop=FALSE])
+  cd      <- as.data.frame(colData(joint_spe)[, c("sample","neighborhood"), drop=FALSE])
   sum_df  <- do.call(rbind, lapply(sample_names, function(s) {
-    tab <- table(cd$neighbourhood[cd$sample == s])
-    data.frame(sample=s, neighbourhood=names(tab), n_cells=as.integer(tab))
+    tab <- table(cd$neighborhood[cd$sample == s])
+    data.frame(sample=s, neighborhood=names(tab), n_cells=as.integer(tab))
   }))
   sum_path <- file.path(out_dir, paste0(label, "_assignment_summary.csv"))
   write.csv(sum_df, sum_path, row.names=FALSE)
@@ -544,7 +544,7 @@ run_neighborhood_analysis <- function(
     snames_j <- unique(as.character(colData(joint_spe)$sample))
     for (s in snames_j) {
       spe_s    <- joint_spe[, colData(joint_spe)$sample == s]
-      p <- .spatial_plot(spe_s, s, colour_by="neighbourhood",
+      p <- .spatial_plot(spe_s, s, colour_by="neighborhood",
                          ct_col=ct_cols[[s]], pt_size=1.2, alpha=0.8)
       png_path <- file.path(out_dir,
                             paste0(label, "_spatial_", make.names(s), ".png"))

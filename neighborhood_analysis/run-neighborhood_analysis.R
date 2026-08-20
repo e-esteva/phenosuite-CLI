@@ -2,7 +2,7 @@
 #
 # run-neighborhood_analysis.R
 # ===========================
-# CLI entry point for the NeighborhoodR spatial neighbourhood analysis pipeline.
+# CLI entry point for the NeighborhoodR spatial neighborhood analysis pipeline.
 #
 # Supports two invocation styles:
 #
@@ -47,8 +47,8 @@ usage_text <- function() {
       <k1> <k2_min> <k2_max> <loo_mode> <loo_n> <cond_map> <seed>
 
 Builds a KNN niche composition matrix, runs a LOO stability sweep to select
-the optimal neighbourhood count K2, assigns cells with MiniBatchKMeans, and
-saves a concatenated SpatialExperiment RDS with 'neighbourhood' in colData.
+the optimal neighborhood count K2, assigns cells with MiniBatchKMeans, and
+saves a concatenated SpatialExperiment RDS with 'neighborhood' in colData.
 
 Required:
   --rds-files=LIST      Semicolon-separated .rds SpatialExperiment paths, OR
@@ -79,11 +79,11 @@ Environment variables:
   RETICULATE_PYTHON    Python binary (e.g. /opt/venv/bin/python).
 
 Output (written to --out-dir/--label/):
-  {label}_joint_spe.rds            Concatenated SPE with neighbourhood in colData
-  {label}_assignment_summary.csv   Sample x neighbourhood cell counts
+  {label}_joint_spe.rds            Concatenated SPE with neighborhood in colData
+  {label}_assignment_summary.csv   Sample x neighborhood cell counts
   {label}_sweep_results.csv        LOO stability scores per K2 (if sweep ran)
   {label}_spatial_{sample}.png     Per-sample spatial projection (unless --no-plots)
-  {label}_composition_barplot.png  Celltype x neighbourhood barplot (unless --no-plots)
+  {label}_composition_barplot.png  Celltype x neighborhood barplot (unless --no-plots)
   {label}_provenance.json          Full run provenance
 
 Prerequisites:

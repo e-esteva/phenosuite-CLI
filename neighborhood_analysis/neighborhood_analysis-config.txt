@@ -7,7 +7,7 @@ configFile=neighborhood_analysis-config.txt
 
 # ---------------------------------------------------------------------------
 # Batch inputs (one row per analysis run; row N across every file = run N).
-# A "run" is one multi-sample neighbourhood analysis. Separate multiple RDS
+# A "run" is one multi-sample neighborhood analysis. Separate multiple RDS
 # paths within a single run with semicolons inside rds_files.txt.
 # Pad any row with no value using the literal string 'NULL'.
 # ---------------------------------------------------------------------------
