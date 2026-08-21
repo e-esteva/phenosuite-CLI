@@ -24,8 +24,8 @@ k1=10                    # KNN neighbours for niche composition matrix
 k2=NULL                  # fixed K2 — leave NULL to run LOO sweep
 k2_min=3                 # sweep lower bound
 k2_max=NULL              # sweep upper bound (NULL = n_celltypes-1)
-loo_mode=count           # 'count' or 'pct'
-loo_n=1                  # hold-out count or percentage
+loo_mode=count           # 'count', 'pct', or 'group' (stratified by condition_col/condition_maps)
+loo_n=1                  # hold-out count, percentage, or per-group count (meaning depends on loo_mode)
 agg_fn=median            # 'median' or 'mean' stability metric
 condition_col=NULL       # shared colData column for condition (NULL if mapping manually)
 seed=42                  # random seed

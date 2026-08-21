@@ -1,0 +1,30 @@
+name: runpcf
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # R runtime
+  - r-base=4.4
+
+  # Spatial statistics — the PCF estimators themselves
+  - r-spatstat            # metapackage; pulls spatstat.geom + spatstat.explore
+  - r-spatstat.geom
+  - r-spatstat.explore
+
+  # Figures
+  - r-ggplot2
+  - r-ggpubr              # ggviolin() + stat_compare_means()
+  - r-gridextra
+
+  # Utilities
+  - r-glue
+  - r-jsonlite
+
+# After env creation:
+#   conda activate runpcf
+#   Rscript run-pcf.R --help
+#
+# No Python is required. The pcf-v2 Shiny app reached spatstat through
+# reticulate -> vectra_lib_v4.py -> rpy2; this module calls spatstat directly,
+# so neither reticulate nor rpy2 is needed.
