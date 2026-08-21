@@ -4,8 +4,12 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  # R runtime
-  - r-base=4.4
+  # R runtime. Deliberately a floor, not a pin: nothing in this module needs a
+  # recent R (the newest base function it calls is startsWith(), R 3.3), and a
+  # hard `=4.4` fails to solve on sites whose channel set tops out lower —
+  # conda reports `ResolvePackageNotFound: r-base=4.4` even though every other
+  # package here resolves fine.
+  - r-base>=4.1
 
   # Spatial statistics — the PCF estimators themselves
   - r-spatstat            # metapackage; pulls spatstat.geom + spatstat.explore

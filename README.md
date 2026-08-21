@@ -351,7 +351,7 @@ conda activate runpcf
 
 What [environment.yml](pcf/environment.yml) pins:
 
-- `r-base=4.4`
+- `r-base>=4.1` — a floor, not a pin: nothing here needs a recent R, and a hard `=4.4` fails to solve on sites whose channels top out lower
 - Spatial statistics: `r-spatstat` (metapackage), `r-spatstat.geom`, `r-spatstat.explore` — the PCF estimators themselves
 - Figures: `r-ggplot2`, `r-ggpubr` (`ggviolin()` + `stat_compare_means()`), `r-gridextra`
 - Utilities: `r-glue`, `r-jsonlite`
@@ -2014,6 +2014,7 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 | `run-phenomenalist.R: error: RunPhenomenalist.R not found under …` | The wrapper could not auto-locate its siblings (rare — only happens when the script is copied without its directory, or run via a `source()` from another dir) | Set `PHENOMENALIST_DIR` to the directory containing `RunPhenomenalist.R` + `phenomenalist-utils.R` |
 | `phenomenalist package not available` | Neither `PHENOMENALIST_PKG_DIR` is set nor `library(phenomenalist)` succeeds | Install the `phenomenalist` R package, or set `PHENOMENALIST_PKG_DIR` to its `R/` source directory |
 | masquerade run succeeds but no `.ome.tiff` is found at the end | The launcher locates the output by running `ls -t ${out_dir}/${base}*.ome.tiff` — wrong `out_dir` permissions or an unexpected `basename` will make it miss | Check the directory of `outPath` in [configFile-batch.txt](masquerade/configFile-batch.txt) and confirm [masquerade_interface.py](masquerade/masquerade_interface.py) wrote the file; see [run-masquerade-batch.sh:34-39](masquerade/run-masquerade-batch.sh) |
+| pcf: `conda env create` fails with `ResolvePackageNotFound: r-base=…` | The channel set available at your site has no R at that exact version | The shipped spec asks for `r-base>=4.1`, so pull the current `environment.yml`; if a site pin still blocks it, create the env with `-c conda-forge` explicitly |
 | pcf: `Rscript not found` | Neither `conda_env` nor `r_module` is set in `pcf-config.txt`, and the submitting shell had no R | Set `conda_env=runpcf` (after `conda env create -f environment.yml`), or `r_module=` your site's R module, or activate the env before `sbatch` |
 | pcf: R starts but `there is no package called 'spatstat.explore'` | A `module load` shadowed the conda env's R — the site R is first on `PATH` and has no spatstat | Set either `conda_env` or `r_module` in `pcf-config.txt`, not both |
 | pcf: `no phenotype is present in all N input files` | The phenotype labels differ across CSVs (e.g. one sample was annotated with a different cluster naming) | Pass `--celltypes` explicitly, or harmonise the `Phenotype` column across exports |
