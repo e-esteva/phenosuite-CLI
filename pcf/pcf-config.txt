@@ -31,6 +31,14 @@ phenotype_col=Phenotype  # column holding the cell type labels
 make_plots=TRUE          # write curve-grid + AUC violin PDFs
 
 # ---------------------------------------------------------------------------
+# R provisioning (both optional — leave empty to inherit the submitting shell)
+# ---------------------------------------------------------------------------
+conda_env=runpcf         # conda env activated in each array task (empty/NULL to skip)
+r_module=                # site R module to load, e.g. r/4.4.0 (empty/NULL to skip)
+                         # Set one or the other, not both: a module load after a
+                         # conda activate shadows the env's R and hides its packages.
+
+# ---------------------------------------------------------------------------
 # SLURM parameters for the array job
 # ---------------------------------------------------------------------------
 batch_size=$(wc -l < ${vectra_files} | awk '{print $1}')

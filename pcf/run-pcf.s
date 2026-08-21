@@ -16,7 +16,57 @@ export PCF_DIR="${SCRIPT_DIR}"
 
 source "${SCRIPT_DIR}/pcf-config.txt"
 
-module load r/4.4.0
+# ---------------------------------------------------------------------------
+# R provisioning. Both keys are optional and both may be left empty.
+#
+# This module ships its own conda env (environment.yml), and a `module load`
+# would put the site R ahead of that env's R on PATH — hiding the exact
+# spatstat / ggpubr install the env exists to provide. So nothing is loaded
+# unless it is asked for:
+#   conda_env  — env to activate in each array task (default: runpcf)
+#   r_module   — site R module for clusters that keep R in modules instead
+#
+# Leaving both empty inherits whatever the submitting shell had: pcf-meta.s
+# submits with --export=ALL, so an env activated before `sbatch` carries into
+# every task on its own.
+# ---------------------------------------------------------------------------
+# `source` is a POSIX special builtin: under `set -e` a failed `source activate`
+# aborts the task immediately, before any `|| fallback` can run. So the
+# mechanism is checked before it is used, and a missing conda degrades to a
+# warning instead of a silent exit 1.
+if [[ -n "${conda_env:-}" && "${conda_env}" != "NULL" ]]; then
+    if command -v conda >/dev/null 2>&1; then
+        eval "$(conda shell.bash hook)"
+        conda activate "${conda_env}" \
+            || echo "run-pcf.s: could not activate conda env '${conda_env}'; using the inherited environment" >&2
+    elif command -v activate >/dev/null 2>&1; then
+        source activate "${conda_env}" \
+            || echo "run-pcf.s: could not activate conda env '${conda_env}'; using the inherited environment" >&2
+    else
+        echo "run-pcf.s: conda_env='${conda_env}' is set but conda is not on PATH; using the inherited environment" >&2
+    fi
+fi
+
+# `module` is usually a shell function from /etc/profile.d, which a
+# non-interactive job shell may not have sourced. An r_module that was asked
+# for but cannot be loaded is an error, not something to run past quietly.
+if [[ -n "${r_module:-}" && "${r_module}" != "NULL" ]]; then
+    if [[ "$(type -t module || true)" == "" ]]; then
+        echo "run-pcf.s: r_module='${r_module}' is set but no 'module' command is available here." >&2
+        echo "  Clear r_module= in pcf-config.txt and use conda_env= instead, or source the" >&2
+        echo "  module system (e.g. /etc/profile.d/modules.sh) before submitting." >&2
+        exit 1
+    fi
+    module load "${r_module}"
+fi
+
+if ! command -v Rscript >/dev/null 2>&1; then
+    echo "run-pcf.s: Rscript not found." >&2
+    echo "  Set conda_env= (e.g. runpcf) or r_module= (e.g. r/4.4.0) in pcf-config.txt," >&2
+    echo "  or activate the environment before submitting — pcf-meta.s submits with" >&2
+    echo "  --export=ALL, so the submitting shell's environment carries into each task." >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Extract row N from a line-aligned batch-input file.
