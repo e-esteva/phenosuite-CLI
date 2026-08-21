@@ -1,0 +1,40 @@
+# pcf-config.txt
+# ==============
+# Sourced by pcf-meta.s and run-pcf.s. Bash variable substitutions
+# (e.g. $(wc -l ...)) are evaluated at source time. Edit the values below, then
+# submit with:  sbatch pcf-meta.s
+#
+# Each per-run list file holds one row per run; row N across every list is the
+# same run N. A "run" is one PCF analysis over one or more Vectra CSVs
+# (one CSV = one sample). Pad any missing per-run value with the literal
+# string 'NULL'.
+
+configFile=pcf-config.txt
+
+# ---------------------------------------------------------------------------
+# Batch inputs (one row per run)
+# ---------------------------------------------------------------------------
+vectra_files=batch-inputs/vectra_files.txt   # directory of Vectra CSVs, ;-separated CSV paths, or a .txt list — per run
+out_dirs=batch-inputs/out_dirs.txt           # output root directory per run
+labels=batch-inputs/labels.txt               # output label/prefix per run (a subdirectory of out_dir)
+celltypes=batch-inputs/celltypes.txt         # comma-separated cell types per run (NULL -> phenotypes shared by every input file)
+ref_celltypes=batch-inputs/ref_celltypes.txt # reference cell type for the AUC violins per run (NULL -> first cell type)
+
+# ---------------------------------------------------------------------------
+# PCF parameters (global — apply to every run in the batch)
+# ---------------------------------------------------------------------------
+radius=30                # maximum radius in microns
+resolution=0.377         # instrument resolution, microns/pixel
+count_threshold=10       # minimum cells of a type before its interactions are computed (>= 1)
+min_count=0              # drop interactions whose smaller cell count is <= this when assembling curves
+phenotype_col=Phenotype  # column holding the cell type labels
+make_plots=TRUE          # write curve-grid + AUC violin PDFs
+
+# ---------------------------------------------------------------------------
+# SLURM parameters for the array job
+# ---------------------------------------------------------------------------
+batch_size=$(wc -l < ${vectra_files} | awk '{print $1}')
+module1_Path=run-pcf.s
+module1_mem=64GB
+module1_time=0-6
+module1_partition=cpu_short

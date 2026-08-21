@@ -1,6 +1,6 @@
 # phenosuite-CLI
 
-Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles seven independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
+Command-line interface for the core PhenoSuite pipelines, designed to run on SLURM-based HPC clusters. The repository bundles eight independent spatial-biology modules that operate on multiplexed tissue imaging and spatial-transcriptomics data (CODEX, multiplexed IF, HALO / Mesmer / QuPath segmentations, MERFISH):
 
 - **[segmentation](segmentation/)** — cell segmentation from multi-channel tissue images with four interchangeable routes: Segment Anything (SAM), DeepCell Mesmer, StarDist, and Cellpose (Python).
 - **[RunPhenomenalist](RunPhenomenalist/)** — cellular scaling, dimensionality reduction, and clustering from single-cell segmentation tables (R).
@@ -8,6 +8,7 @@ Command-line interface for the core PhenoSuite pipelines, designed to run on SLU
 - **[spatial-dynamics](spatial-dynamics/)** — pairwise log-odds and multi-cell-type neighborhood enrichment for spatial cell–cell relationships (Python).
 - **[merfish](merfish/)** — headless MERFISH spatial-transcriptomics pipeline: QC, normalization, clustering, neighborhood enrichment, spatially variable genes, and differential expression from cell × gene matrices (R).
 - **[neighborhood_analysis](neighborhood_analysis/)** — KNN niche composition matrix, LOO stability sweep to select optimal neighbourhood count K₂, and MiniBatchKMeans assignment across multi-sample SpatialExperiment cohorts (R + Python).
+- **[pcf](pcf/)** — inhomogeneous pair correlation functions between cell types from Vectra-format annotation tables: per-interaction PCF curves, normalized-PCF tables, and reference-cell-type interaction violins (R).
 - **[gemma-phenotyper](gemma-phenotyper/)** — LLM cluster annotation with a Gemma model from HuggingFace weights, running offline on GPU nodes (R + Python).
 
 The **segmentation** module's centroid-table output feeds directly into **RunPhenomenalist**, whose downstream `mask-inputs/` output in turn feeds **masquerade** — the three modules form one segmentation → phenotyping → visualization chain.
@@ -28,6 +29,7 @@ Each module is a self-contained `sbatch`-driven array job: a config file declare
    - [spatial-dynamics](#spatial-dynamics)
    - [merfish](#merfish)
    - [neighborhood_analysis](#neighborhood_analysis)
+   - [pcf](#pcf)
    - [gemma-phenotyper](#gemma-phenotyper)
 5. [Image preprocessing (QuPath crops for SAM)](#image-preprocessing-qupath-crops-for-sam)
 6. [Configuration reference](#configuration-reference)
@@ -149,6 +151,22 @@ phenosuite-CLI/
 │   │   ├── out_dirs.txt
 │   │   ├── labels.txt
 │   │   └── condition_maps.txt
+│   └── run-logs-batch/                       #   timestamped run logs (generated)
+│
+├── pcf/                                      # R pipeline: pair correlation functions between cell types
+│   ├── run-pcf.R                             #   CLI wrapper (named flags; standalone-runnable)
+│   ├── pcf-utils.R                           #   spatstat PCF estimators + curve tables + AUC violins
+│   ├── pcf-config.txt                        #   batch config (edit this)
+│   ├── pcf-meta.s                            #   SLURM entry point — `sbatch` this
+│   ├── run-pcf.s                             #   SLURM array task (called by meta)
+│   ├── makeRunLog-batch.sh                   #   captures config + input lists per run
+│   ├── environment.yml                       #   conda env spec (r-base=4.4 + spatstat/ggpubr)
+│   ├── batch-inputs/                         #   line-aligned per-run inputs
+│   │   ├── vectra_files.txt                  #     dir of Vectra CSVs, ;-separated CSVs, or a .txt list
+│   │   ├── out_dirs.txt
+│   │   ├── labels.txt
+│   │   ├── celltypes.txt
+│   │   └── ref_celltypes.txt
 │   └── run-logs-batch/                       #   timestamped run logs (generated)
 │
 └── gemma-phenotyper/                         # R pipeline: LLM cluster annotation (Gemma)
@@ -321,6 +339,25 @@ What [environment.yml](neighborhood_analysis/environment.yml) pins:
 - Python: `python=3.11`, `numpy<2`, `scipy`, `scikit-learn`, `psutil` (optional — enables memory logging)
 
 The Python packages activate the high-performance backend automatically at runtime. If sklearn / scipy / numpy are absent, the pipeline falls back silently to RANN (R KNN) + base `kmeans`. The `run-neighborhood_analysis.s` launcher runs `module load r/4.4.0` (site-specific); on a conda-only system, remove that line and `conda activate neighborhoodr` before `sbatch`.
+### pcf
+
+Provision the shipped conda env (named `runpcf`):
+
+```bash
+cd pcf/
+conda env create -f environment.yml
+conda activate runpcf
+```
+
+What [environment.yml](pcf/environment.yml) pins:
+
+- `r-base=4.4`
+- Spatial statistics: `r-spatstat` (metapackage), `r-spatstat.geom`, `r-spatstat.explore` — the PCF estimators themselves
+- Figures: `r-ggplot2`, `r-ggpubr` (`ggviolin()` + `stat_compare_means()`), `r-gridextra`
+- Utilities: `r-glue`, `r-jsonlite`
+
+No Python is required. The `pcf-v2` Shiny app reached spatstat the long way round — R → `reticulate` → `vectra_lib_v4.py` → `rpy2` → spatstat — so the maths always ran in R; this module calls spatstat directly and needs neither `reticulate` nor `rpy2`. The `run-pcf.s` launcher runs `module load r/4.4.0` (site-specific); on a conda-only system, remove that line and `conda activate runpcf` before `sbatch`.
+
 ### gemma-phenotyper
 
 Create the conda env from the shipped spec — the launchers expect it to be named `gemma-phenotyper`:
@@ -568,6 +605,46 @@ Rscript run-neighborhood_analysis.R \
     --k1=10 \
     --loo-mode=group --loo-n=1 \
     --condition-map=t0_a=T0,t0_b=T0,t0_c=T0,t1_a=T1,t1_b=T1,t1_c=T1
+```
+
+---
+
+### pcf
+
+```bash
+cd pcf/
+# 1. Edit pcf-config.txt (radius, instrument resolution, count threshold, SLURM params)
+vi pcf-config.txt
+# 2. Populate batch-inputs/ — one line per run; a run is one PCF analysis over one or more Vectra CSVs
+vi batch-inputs/vectra_files.txt   # a directory of CSVs, /a.csv;/b.csv, or a .txt list
+vi batch-inputs/out_dirs.txt
+vi batch-inputs/labels.txt
+vi batch-inputs/celltypes.txt      # comma-separated cell types, or NULL for the phenotypes shared by every file
+vi batch-inputs/ref_celltypes.txt  # reference cell type for the interaction violins, or NULL
+# 3. Submit. pcf-meta.s pre-validates row alignment before sbatch.
+sbatch pcf-meta.s
+```
+
+To run on a single cohort outside of SLURM:
+
+```bash
+Rscript run-pcf.R --help
+
+# every *.csv under a directory, all shared phenotypes, defaults elsewhere
+Rscript run-pcf.R \
+    --vectra-files=/data/vectra/cohort1 \
+    --out-dir=/data/results/pcf \
+    --label=cohort1_20260820 \
+    --ref-celltype='CD8+ T cells'
+
+# an explicit sample list and cell-type subset, 50 um radius on a 0.5 um/px scan
+Rscript run-pcf.R \
+    --vectra-files='/data/s1.csv;/data/s2.csv;/data/s3.csv' \
+    --out-dir=/data/results/pcf \
+    --label=cohort2_20260820 \
+    --celltypes='CD8+ T cells,Macrophages,B cells' \
+    --ref-celltype='CD8+ T cells' \
+    --radius=50 --resolution=0.5 --count-threshold=10
 ```
 
 ---
@@ -1164,6 +1241,154 @@ Every file in [neighborhood_analysis/batch-inputs/](neighborhood_analysis/batch-
 
 ---
 
+### pcf
+
+#### What it does
+
+Headless port of the PhenoSuite `pcf-v2` module. Reads Vectra `cell_seg_data`-style annotation CSVs (one CSV = one sample), computes inhomogeneous pair correlation functions between every pair of cell types, and writes the PCF curves, a normalized-PCF table for one reference cell type, and the interaction plots the app produced.
+
+```
+Load Vectra CSVs → build marked point patterns → inhomogeneous PCF per
+interaction (spatstat) → normalize by intensity → curve grid + AUC table +
+interaction violins
+```
+
+For each sample the cells become a marked `ppp` (marks = phenotype) on the window spanned by the coordinates, and each pair of cell types is estimated with the matching spatstat estimator on a shared 500-point radius grid running from 0 to `radius / resolution` pixels:
+
+| Pair | Estimator |
+|---|---|
+| `All` vs `All` | `pcfinhom()` — every cell against every cell |
+| `All` vs celltype | `pcfdot.inhom()` — one type against the whole pattern |
+| celltype vs celltype | `pcfcross.inhom()` — one type against another |
+
+All three use `correction="isotropic"` with leave-one-out-free kernel intensities (`density(..., at="points", leaveoneout=FALSE)`), and each curve is divided by `Σ(1/λ₁)·Σ(1/λ₂) / (Δx·Δy)²` so curves are comparable across samples of different size and density — the normalization the app applied. A curve above 1 means the two types sit closer together than a random arrangement of the same intensities would put them.
+
+The GUI ran R → `reticulate` → `vectra_lib_v4.py` → `rpy2` → spatstat, so every number it produced was already computed by spatstat in R. This module calls spatstat directly: same estimators, same arguments, same normalization, no Python in the loop.
+
+#### Inputs
+
+- **Vectra annotation CSVs** — comma- or tab-delimited, with `Cell X Position`, `Cell Y Position` and a phenotype column (`Phenotype` by default; `--phenotype-col` to change). `Tissue Category` is read when present and `Sample Name` is taken from the first row, falling back to the filename. **One CSV = one sample.** `gemma-phenotyper`'s `vectra_gemma_*.csv` export is written in exactly this format.
+- **Cell types** (optional): `--celltypes` selects which phenotypes to analyse. The default is every phenotype present in *all* input files, matching the app's checkbox list.
+- **Reference cell type** (optional): `--ref-celltype` is the type whose interactions are summarized in the AUC table and violins. Defaults to the first analysed cell type.
+
+#### Outputs
+
+Written under `${out_dir}/${label}/`:
+
+| File | Contents |
+|---|---|
+| `<label>_pcf_summary.csv` | One row per sample × interaction: cell counts, `PCFsum`, normalization constant, and whether the pair was skipped |
+| `<label>_pcf_curves.csv` | Long-format curves — one row per (sample, interaction, radius step) with raw `PCF` and `normPCF` |
+| `<label>_ppc.rds` | Per-cell-type curve tables (the app's `ppc.rds`), one list element per cell type |
+| `<label>-PCF_AUCs.csv` | `normPCF` series of every reference-cell-type interaction, one column per partner type plus `Sample` — the input format the PhenoSuite `pcf-builder` app reads for cross-cohort comparisons |
+| `<label>-PCF-plots.pdf` | Curve grid: one panel per cell type, one line per partner, mean ± variance ribbon across samples |
+| `<label>-PCF_AUC_violins.pdf` | Interaction violins vs the `All` baseline (single-sample runs) |
+| `<label>-PCF_AUC_violins-global.pdf` | Same, pooled over every sample (multi-sample runs) |
+| `<label>-PCF_AUC_violins-bySample.pdf` | Same, split by sample (multi-sample runs) |
+| `individual-samples/<sample>-PCF_AUC_violins.pdf` | Per-sample violins (multi-sample runs) |
+| `<label>_provenance.json` | Inputs, parameters, R / spatstat versions, git SHA, image digest |
+
+#### Entry point and orchestration
+
+`sbatch pcf-meta.s` reads [pcf-config.txt](pcf/pcf-config.txt), validates that every `batch-inputs/*.txt` file has at least `batch_size` rows and that `count_threshold >= 1` (submission aborts with a clear error otherwise), and submits [run-pcf.s](pcf/run-pcf.s) as an array job sized `1..batch_size`. Each array task extracts its row from every list and invokes the CLI:
+
+```bash
+Rscript run-pcf.R \
+    --vectra-files="${vectra_files_tmp}" \
+    --out-dir="${out_dir_tmp}" \
+    --label="${label_tmp}" \
+    --celltypes="${celltypes_tmp}" \
+    --ref-celltype="${ref_celltype_tmp}" \
+    --radius="${radius}" --resolution="${resolution}" \
+    --count-threshold="${count_threshold}" --min-count="${min_count}" \
+    --phenotype-col="${phenotype_col}" \
+    $([ "${make_plots}" = "FALSE" ] && echo "--no-plots")
+```
+
+Full option reference:
+
+```
+Required:
+  --vectra-files=SPEC    directory of Vectra CSVs (searched recursively), ;-separated
+                         CSV paths, or a .txt file listing one CSV path per line
+  --out-dir=DIR          output directory (a --label subdirectory is created)
+
+Optional — analysis:
+  --label=STR            output filename prefix                    [default: YYYYMMDD]
+  --celltypes=LIST       comma-separated cell types to analyse
+                         [default: phenotypes present in every input file]
+  --ref-celltype=NAME    reference cell type for the AUC violins   [default: first celltype]
+  --radius=N             maximum radius in microns                 [default: 30]
+  --resolution=N         instrument resolution, microns/pixel      [default: 0.377]
+  --count-threshold=N    minimum cells of a type before its interactions
+                         are computed (>= 1)                       [default: 10]
+  --min-count=N          drop interactions whose smaller cell count is <= this
+                         when assembling curves                    [default: 0]
+  --phenotype-col=NAME   column holding the cell type labels       [default: Phenotype]
+
+Optional — export:
+  --no-plots             suppress PDF output
+  -h, --help             show help and exit
+```
+
+`--radius` and `--resolution` set the radius grid together: curves run from 0 to `radius / resolution` pixels in 500 steps, and are plotted in microns. Getting `--resolution` wrong rescales every x-axis, so check it against the instrument that produced the scan (0.377 µm/px is the Vectra Polaris 20× default).
+
+Interactions involving a cell type with fewer than `--count-threshold` cells in a given sample are skipped for that sample: the pair still appears in `<label>_pcf_summary.csv` with `skipped=TRUE` and no curve, and its column comes through as `NA` in that sample's `-PCF_AUCs.csv` rows. This is per sample, so a type that is abundant in one sample and rare in another contributes wherever it can.
+
+Sentinels that all mean *not set*: `NULL`, `null`, `NA`, `none`, `None`, `''` (empty). Any row of any `batch-inputs/*.txt` file may safely use `NULL`. `run-pcf.R` is fully standalone-runnable without SLURM.
+
+One environment variable controls sibling-file discovery:
+
+| Variable | Meaning |
+|---|---|
+| `PCF_DIR` | Directory holding `pcf-utils.R`. Auto-detected from the script location; override only if the files are split across directories. |
+
+#### Differences from the Shiny app
+
+The estimators, arguments and normalization are unchanged. Four behaviours were fixed rather than reproduced, because reproducing them would have meant shipping known-wrong output:
+
+- **AUC values are the raw `normPCF` series in every case.** The app's single-sample branch (its Python `pcf_AUC()`) multiplied them by `resolution` while its multi-sample branch did not, so one-sample and multi-sample runs came out in different units and could not be pooled.
+- **AUC rows are assembled per sample**, so the `Sample` column always lines up with its values — including when a pair was skipped in one sample only. The app assumed every pair survived in every sample and would otherwise mislabel rows.
+- **Curve-grid panels read their partner cell type per row** instead of inferring it from row position (same assumption), and each panel is titled with its own cell type instead of indexing the column names by panel number.
+- **The dead `geom_signif()` layer was dropped.** Called without `comparisons=`, `stat_signif` has nothing to test and fails at draw time, so no bracket was ever drawn in the app either — only a warning per panel. The p-values that do appear come from `stat_compare_means(ref.group='All')`, which tests every interaction against the `All` baseline.
+
+Also note that `-PCF_AUCs.csv` holds per-radius `normPCF` values, not integrated areas — "AUC" is the app's name for the file and is kept for `pcf-builder` compatibility.
+
+#### pcf-builder compatibility
+
+`<label>-PCF_AUCs.csv` is written to drop straight into the PhenoSuite `pcf-builder` app, which pools these tables across runs and plots one group against another. The format that app reads is:
+
+| Requirement | How this module satisfies it |
+|---|---|
+| Loaded with `read.csv(…, row.names = 1)` | The table is written **with** row names, contiguous and unique |
+| A `Sample` column | Multi-sample runs write the per-CSV sample name; single-sample runs write the run `--label`, so one run = one group |
+| Every other column a cell type of numeric values | One column per partner cell type of the reference, plus `All` |
+| Cell-type columns intersected across the loaded files | Column names are the phenotype labels themselves, so runs sharing a panel share columns |
+
+Because that last step is an *intersection*, runs meant to be compared in `pcf-builder` should be produced with the same `--ref-celltype` and the same `--celltypes`. A reference cell type is excluded from its own AUC table, so two runs that used different references only share the columns neither one referenced — the app will silently offer the smaller list.
+
+Two things are dropped before the file is written, because both are all-`NA` and would otherwise show up in the app as selectable-but-empty options: cell types whose interactions with the reference were skipped in *every* sample, and samples that contributed nothing at all. Each is reported on stderr when it happens, and both remain recorded in `<label>_pcf_summary.csv` with `skipped=TRUE`.
+
+One case survives that filter by design: a cell type present in some samples and skipped in others keeps its real values and carries `NA` for the rest. In `pcf-builder`, selecting that cell type together with a sample that has no data for it leaves that group's violin empty and `stat_compare_means()` unable to use it as the reference group. Discarding those rows would mean discarding the samples where the interaction *was* measured, so they are kept.
+
+Finally, `pcf-builder` renames samples into groups with `gsub(<sample name>, <new name>, Sample)` — it treats the `Sample` values as regular expressions and as substrings. Keep CSV filenames and `labels.txt` entries to letters, digits, `_` and `-`, and don't let one name be a prefix of another: `run+2` never matches itself, and renaming `s1` also rewrites part of `s10`. `run-pcf.R` prints a `NOTE` for both cases before writing the file, so a mis-grouped downstream plot is flagged at the point it becomes possible rather than discovered later.
+
+#### batch-inputs/ format
+
+Every file in [pcf/batch-inputs/](pcf/batch-inputs/) holds **one row per run** (where a "run" is one PCF analysis over one or more CSVs). Row N must describe the same run across all files. Use `NULL` for any unused slot.
+
+| File | Contents | Example row |
+|---|---|---|
+| `vectra_files.txt` | directory of CSVs, `;`-separated CSV paths, or a `.txt` list | `/data/vectra/cohort1` |
+| `out_dirs.txt` | output directory | `/data/results/pcf` |
+| `labels.txt` | output filename prefix (and subdirectory name) | `cohort1_20260820` |
+| `celltypes.txt` | comma-separated cell types, or `NULL` for the shared set | `CD8+ T cells,Macrophages,B cells` |
+| `ref_celltypes.txt` | reference cell type, or `NULL` for the first one | `CD8+ T cells` |
+
+**To add a run:** append one line to each file above.
+
+---
+
 ### gemma-phenotyper
 
 #### What it does
@@ -1617,6 +1842,38 @@ condition_col=timepoint  # or leave NULL and give every sample a label in condit
 
 ---
 
+### [pcf/pcf-config.txt](pcf/pcf-config.txt)
+
+```bash
+configFile=pcf-config.txt
+
+# Batch-input file paths (line-aligned; row N = run N)
+vectra_files=batch-inputs/vectra_files.txt    # per-run CSV directory, ;-separated CSVs, or .txt list
+out_dirs=batch-inputs/out_dirs.txt            # per-run output directories
+labels=batch-inputs/labels.txt                # per-run output prefix (also the subdirectory name)
+celltypes=batch-inputs/celltypes.txt          # per-run cell types (NULL -> shared across all input files)
+ref_celltypes=batch-inputs/ref_celltypes.txt  # per-run reference cell type (NULL -> first cell type)
+
+# PCF parameters
+radius=30                # float — maximum radius in microns
+resolution=0.377         # float — instrument resolution, microns/pixel
+count_threshold=10       # int   — minimum cells of a type before its interactions are computed (>= 1)
+min_count=0              # int   — drop interactions whose smaller cell count is <= this
+phenotype_col=Phenotype  # column holding the cell type labels
+make_plots=TRUE          # write curve-grid + AUC violin PDFs
+
+# SLURM parameters
+batch_size=$(wc -l < ${vectra_files} | awk '{print $1}')  # auto-computed from primary list
+module1_Path=run-pcf.s                                    # path to array-task launcher
+module1_mem=64GB                                          # memory per array task
+module1_time=0-6                                          # wall time (D-HH)
+module1_partition=cpu_short                               # SLURM partition (site-specific)
+```
+
+Runtime scales with the number of interactions (`(n+1)(n+2)/2` per sample for `n` cell types) and with cell count per sample, since every pair fits its own kernel intensity estimate. Trim `celltypes.txt` to the populations you actually care about before raising `module1_time`.
+
+---
+
 ### [gemma-phenotyper/gemma-phenotyper-config.txt](gemma-phenotyper/gemma-phenotyper-config.txt)
 
 ```bash
@@ -1687,6 +1944,7 @@ The repository carries several older versions alongside the current implementati
 | masquerade (launcher) | `run-masquerade-batch.sh` | `run-masquerade-batch_v0.sh` |
 | spatial-dynamics | `pwlo_es_pt.py`, `n_simplex_neighborhoods.py`, `getNeighborhoods.py`, `optimize-neighborhoods.py` | `getNeighborhoods-v0.R`, `getNeighborhoods-v1.R`, `optimize-neighborhoods.R` |
 | neighborhood_analysis | `run-neighborhood_analysis.R` + `neighborhood_analysis-utils.R` | — (no legacy files) |
+| pcf | `run-pcf.R` + `pcf-utils.R` | — (no legacy files) |
 
 ---
 
@@ -1699,6 +1957,7 @@ Each module ships a `makeRunLog-batch.sh` that creates a timestamped file in `ru
 - [masquerade/makeRunLog-batch.sh](masquerade/makeRunLog-batch.sh) — called automatically at the end of [run-masquerade-batch.sh](masquerade/run-masquerade-batch.sh:73); writes to [masquerade/run-logs-batch/](masquerade/run-logs-batch/).
 - [merfish/makeRunLog-batch.sh](merfish/makeRunLog-batch.sh) — invoke manually before/after a run; writes to `merfish/run-logs-batch/`.
 - [neighborhood_analysis/makeRunLog-batch.sh](neighborhood_analysis/makeRunLog-batch.sh) — called automatically at the end of [run-neighborhood_analysis.s](neighborhood_analysis/run-neighborhood_analysis.s); writes to `neighborhood_analysis/run-logs-batch/`.
+- [pcf/makeRunLog-batch.sh](pcf/makeRunLog-batch.sh) — called automatically at the end of [run-pcf.s](pcf/run-pcf.s); writes to `pcf/run-logs-batch/`.
 - [gemma-phenotyper/makeRunLog-batch.sh](gemma-phenotyper/makeRunLog-batch.sh) — invoke manually after a run; writes to [gemma-phenotyper/run-logs-batch/](gemma-phenotyper/run-logs-batch/). The per-sample `*_prompts.jsonl` / `*_predictions.jsonl` written into each `out_dir` are the finer-grained audit trail — they record the exact text sent to the model and its raw reply.
 
 SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch` from.
@@ -1716,6 +1975,8 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 - ** [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s) does not extract `${spatial_obj}` / `${out_dir}` / `${label}` from the batch-input lists on a per-array-task basis. Expect to fix both before using the circuit-enrichment path.
 - **`relevant_markers` is per-batch, not per-sample.** `run-masquerade-batch.sh` reads row N of `marker-metadata-batch.txt` like the other inputs, so to use one marker list across all samples you must repeat it on every line.
 - **AnnData export needs network access the first time it runs.** `zellkonverter` provisions its own isolated Python env via `basilisk` on first use. SLURM compute nodes are often offline, so do one `--export-anndata=true` run (or `Rscript export-anndata.R …`) on a login node with internet access before relying on the flag inside array jobs.
+- **pcf curve panels are clipped to a PCF of 0–2.** The curve grid keeps the app's `ylim(0, 2)`, which *drops* points outside that band rather than zooming — a very strong short-range interaction leaves a visible gap at small radii instead of a spike. The unclipped values are in `<label>_pcf_curves.csv`.
+- **pcf's `-PCF_AUCs.csv` holds per-radius `normPCF` values, not integrated areas.** The name is the Shiny app's and is kept so the files drop straight into `pcf-builder`; the violins therefore compare distributions of normalized PCF across the radius grid, not one AUC per sample.
 - **gemma-phenotyper's `hf` backend reloads the checkpoint once per array task.** Each sample is an independent task, so a 12B checkpoint is loaded from disk for every one — several minutes of wall time per task before any inference starts. For a large batch of small samples that overhead can dominate; consider merging samples into fewer `.rds` objects, or raising `module1_time` accordingly.
 - **`HF_HOME` defaults to `$HOME`, which is usually too small.** A 12B checkpoint is ~24 GB and cluster home directories are often quota'd below that. Set `hf_home=` in the config (it is exported into every array task) and export the same value in the shell you download from. A plain `model_dir` directory is read straight from disk and needs no cache — but a LoRA adapter's `base_model` is an HF repo id that must already be cached there, because the tasks run with `HF_HUB_OFFLINE=1`. `gemma-phenotyper-meta.s` warns pre-submit if that cache looks empty.
 - **Gated weights must be pre-downloaded on a login node.** Gemma checkpoints require accepting Google's license while logged in, and the array tasks run with `HF_HUB_OFFLINE=1`. `gemma-phenotyper-meta.s` refuses to submit if `model_dir` has no `*.safetensors`/`*.bin`, but it cannot verify a LoRA adapter's *base* model is cached on the nodes — that one will only surface at runtime.
@@ -1740,6 +2001,11 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 | `run-phenomenalist.R: error: RunPhenomenalist.R not found under …` | The wrapper could not auto-locate its siblings (rare — only happens when the script is copied without its directory, or run via a `source()` from another dir) | Set `PHENOMENALIST_DIR` to the directory containing `RunPhenomenalist.R` + `phenomenalist-utils.R` |
 | `phenomenalist package not available` | Neither `PHENOMENALIST_PKG_DIR` is set nor `library(phenomenalist)` succeeds | Install the `phenomenalist` R package, or set `PHENOMENALIST_PKG_DIR` to its `R/` source directory |
 | masquerade run succeeds but no `.ome.tiff` is found at the end | The launcher locates the output by running `ls -t ${out_dir}/${base}*.ome.tiff` — wrong `out_dir` permissions or an unexpected `basename` will make it miss | Check the directory of `outPath` in [configFile-batch.txt](masquerade/configFile-batch.txt) and confirm [masquerade_interface.py](masquerade/masquerade_interface.py) wrote the file; see [run-masquerade-batch.sh:34-39](masquerade/run-masquerade-batch.sh) |
+| pcf: `no phenotype is present in all N input files` | The phenotype labels differ across CSVs (e.g. one sample was annotated with a different cluster naming) | Pass `--celltypes` explicitly, or harmonise the `Phenotype` column across exports |
+| pcf: `no PCF curves were computed for reference cell type '…'` | Every interaction the reference type takes part in fell below `--count-threshold` in every sample | Lower `count_threshold`, or pick a more abundant `ref_celltype` |
+| pcf-builder: a group's violin is empty, or `Can't find specified reference group` | The selected cell type was skipped (below `count_threshold`) in that sample, so its rows are `NA` | Pick another reference group, or re-run that cohort with a lower `count_threshold`; `<label>_pcf_summary.csv` lists which pairs were skipped |
+| pcf-builder: renaming a sample into a group does nothing, or renames the wrong one | `Sample` values contain regex metacharacters, or one name is a prefix of another — the app renames with `gsub()` | Rename the input CSVs (or `labels.txt` entries) to letters/digits/`_`/`-`, with no name a prefix of another; `run-pcf.R` prints a `NOTE` when it writes such names |
+| pcf: curves look shifted along the x-axis | `resolution` does not match the instrument that produced the scan | Set `resolution` (microns/pixel) to the acquisition value — it converts `radius` into the pixel grid the coordinates live on |
 | spatial-dynamics runs the wrong analysis | `module` set to `0` when you wanted `1`, or vice versa | Edit `module=` in [config-spatial_dynamics.txt](spatial-dynamics/config-spatial_dynamics.txt) |
 | `sbatch` rejects the job immediately | Partition name is site-specific (`a100_short`, `cpu_dev`) | Update every `*_partition` key in the configs and every `#SBATCH --partition=` header to match your cluster |
 | `--export-anndata=true` / `export-anndata.R` errors with `'zellkonverter' package is required` | Package not installed in the active R library | `Rscript -e 'BiocManager::install("zellkonverter")'`, or re-provision the conda env from the updated [environment.yml](RunPhenomenalist/environment.yml) |

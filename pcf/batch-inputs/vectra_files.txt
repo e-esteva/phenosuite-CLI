@@ -1,0 +1,2 @@
+/data/vectra/cohort1
+/data/vectra/cohort2/sampleA.csv;/data/vectra/cohort2/sampleB.csv
