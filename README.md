@@ -546,13 +546,28 @@ To run on a single cohort outside of SLURM:
 
 ```bash
 Rscript run-neighborhood_analysis.R --help
+
+# count/pct mode — pooled random hold-out, no group structure assumed
 Rscript run-neighborhood_analysis.R \
     --rds-files=/data/s1.rds;/data/s2.rds;/data/s3.rds \
     --out-dir=/data/results \
     --label=cohort1_20260620 \
     --celltype-col=celltype \
     --k1=10 \
+    --loo-mode=count --loo-n=1 \
     --condition-map=s1=treated,s2=control,s3=control
+
+# group mode — stratified hold-out (e.g. multiple timepoints, each with
+# several replicates): holds out --loo-n samples from *every* condition
+# group each fold, instead of a pooled random draw across all samples
+Rscript run-neighborhood_analysis.R \
+    --rds-files=/data/t0_a.rds;/data/t0_b.rds;/data/t0_c.rds;/data/t1_a.rds;/data/t1_b.rds;/data/t1_c.rds \
+    --out-dir=/data/results \
+    --label=timecourse_20260620 \
+    --celltype-col=celltype \
+    --k1=10 \
+    --loo-mode=group --loo-n=1 \
+    --condition-map=t0_a=T0,t0_b=T0,t0_c=T0,t1_a=T1,t1_b=T1,t1_c=T1
 ```
 
 ---
@@ -1108,9 +1123,9 @@ Optional — neighbourhood parameters:
   --k2-max=INT           LOO sweep upper bound; NULL → k2_min+5        [default: NULL]
 
 Optional — LOO sweep:
-  --loo-mode=STR         'count' (drop one sample per fold) or 'label' (stratify by condition)  [default: count]
-  --loo-n=INT            samples to drop per fold                      [default: 1]
-  --agg-fn=STR           'median' or 'mean' to aggregate fold scores   [default: median]
+  --loo-mode=STR         'count', 'pct', or 'group' — see below                    [default: count]
+  --loo-n=INT            hold-out count (meaning depends on --loo-mode)            [default: 1]
+  --agg-fn=STR           'median' or 'mean' to aggregate fold scores               [default: median]
 
 Optional — export:
   --condition-map=STR    "s1=cond1,s2=cond2" — condition labels for plots  [default: NULL]
@@ -1119,6 +1134,11 @@ Optional — export:
   --no-plots             suppress PNG output
   -h, --help             show help and exit
 ```
+
+`--loo-mode` controls how each fold's held-out sample set is drawn:
+
+- **`count` / `pct`** — `--loo-n` samples (or percent of samples) drawn at random from the pooled sample list, ignoring any group structure.
+- **`group`** — `--loo-n` samples drawn independently from *every* `--condition-col` / `--condition-map` group each fold (e.g. one replicate held out from every timepoint), rather than from the pooled list. Pooled random sampling doesn't reliably approximate this even when the total count is chosen to match: with N groups of R replicates, a random draw of size N lands as exactly one-per-group only a fraction of the time, and that fraction gets *worse* as N grows (≈16% for 4 groups of 3 replicates, ≈4% for 6 groups of 3) — the rest of the draws are uneven, sometimes wiping out a whole group while leaving another untouched. If the design has real replicate structure worth respecting, `group` mode is what actually tests it; `count`/`pct` only approximate it by luck. Requires `--condition-col` or every sample present in `--condition-map`.
 
 Sentinels that all mean *not set*: `NULL`, `null`, `NA`, `none`, `None`, `''` (empty). Any row of any `batch-inputs/*.txt` file may safely use `NULL`. `run-neighborhood_analysis.R` is fully standalone-runnable without SLURM.
 
@@ -1568,8 +1588,8 @@ k2_min=3        # int — LOO sweep lower bound (used when k2=NULL)
 k2_max=NULL     # int — LOO sweep upper bound; NULL → k2_min+5
 
 # LOO sweep options
-loo_mode=count  # count | label — how to partition samples in each fold
-loo_n=1         # int — samples dropped per LOO fold
+loo_mode=count  # count | pct | group — how to partition samples in each fold
+loo_n=1         # int — hold-out count, percentage, or per-group count (depends on loo_mode)
 agg_fn=median   # median | mean — aggregate fold stability scores
 condition_col=NULL  # colData column already holding condition labels (alternative to condition_map)
 
@@ -1584,6 +1604,16 @@ module1_mem=128GB                                       # memory per array task
 module1_time=0-6                                        # wall time (D-HH)
 module1_partition=cpu_short                             # SLURM partition (site-specific)
 ```
+
+For a stratified sweep instead — e.g. holding out one replicate from every timepoint each fold, rather than a pooled random draw across all samples — change just these lines:
+
+```bash
+loo_mode=group
+loo_n=1                  # samples held out per condition group, not a pooled total
+condition_col=timepoint  # or leave NULL and give every sample a label in condition_maps.txt instead
+```
+
+`loo_mode=group` requires `condition_col` (or every sample present across `condition_maps.txt`) — `run-neighborhood_analysis.R` exits with a clear error at argument-parsing time if neither is set, and again mid-run if a sample ends up without a resolved label. `neighborhood_analysis-meta.s` doesn't check this itself — it only validates that batch-input files are row-aligned, not their contents.
 
 ---
 
