@@ -351,12 +351,21 @@ conda activate runpcf
 
 What [environment.yml](pcf/environment.yml) pins:
 
-- `r-base=4.4`
+- `r-base>=4.1` — a floor, not a pin: nothing here needs a recent R, and a hard `=4.4` fails to solve on sites whose channels top out lower
 - Spatial statistics: `r-spatstat` (metapackage), `r-spatstat.geom`, `r-spatstat.explore` — the PCF estimators themselves
 - Figures: `r-ggplot2`, `r-ggpubr` (`ggviolin()` + `stat_compare_means()`), `r-gridextra`
 - Utilities: `r-glue`, `r-jsonlite`
 
-No Python is required. The `pcf-v2` Shiny app reached spatstat the long way round — R → `reticulate` → `vectra_lib_v4.py` → `rpy2` → spatstat — so the maths always ran in R; this module calls spatstat directly and needs neither `reticulate` nor `rpy2`. The `run-pcf.s` launcher runs `module load r/4.4.0` (site-specific); on a conda-only system, remove that line and `conda activate runpcf` before `sbatch`.
+No Python is required. The `pcf-v2` Shiny app reached spatstat the long way round — R → `reticulate` → `vectra_lib_v4.py` → `rpy2` → spatstat — so the maths always ran in R; this module calls spatstat directly and needs neither `reticulate` nor `rpy2`.
+
+Unlike the other R modules, `run-pcf.s` does **not** hardcode a `module load`. How R is provisioned is set in the config, and the default is the shipped conda env:
+
+```bash
+conda_env=runpcf   # activated in each array task
+r_module=          # empty — no module is loaded
+```
+
+Set one or the other, not both. `module load` prepends the site R to `PATH`, so loading a module after activating `runpcf` shadows the env's R and hides the `spatstat` / `ggpubr` install the env exists to provide — the job then fails with a missing-package error despite a correctly built env. Leaving *both* empty inherits the submitting shell: `pcf-meta.s` submits with `--export=ALL`, so an env activated before `sbatch` carries into every task on its own. If neither yields an `Rscript`, the task stops immediately with a message naming both knobs instead of failing later inside R.
 
 ### gemma-phenotyper
 
@@ -1862,6 +1871,10 @@ min_count=0              # int   — drop interactions whose smaller cell count 
 phenotype_col=Phenotype  # column holding the cell type labels
 make_plots=TRUE          # write curve-grid + AUC violin PDFs
 
+# R provisioning (both optional — leave empty to inherit the submitting shell)
+conda_env=runpcf         # conda env activated in each array task (empty/NULL to skip)
+r_module=                # site R module, e.g. r/4.4.0 (empty/NULL to skip)
+
 # SLURM parameters
 batch_size=$(wc -l < ${vectra_files} | awk '{print $1}')  # auto-computed from primary list
 module1_Path=run-pcf.s                                    # path to array-task launcher
@@ -2001,6 +2014,11 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 | `run-phenomenalist.R: error: RunPhenomenalist.R not found under …` | The wrapper could not auto-locate its siblings (rare — only happens when the script is copied without its directory, or run via a `source()` from another dir) | Set `PHENOMENALIST_DIR` to the directory containing `RunPhenomenalist.R` + `phenomenalist-utils.R` |
 | `phenomenalist package not available` | Neither `PHENOMENALIST_PKG_DIR` is set nor `library(phenomenalist)` succeeds | Install the `phenomenalist` R package, or set `PHENOMENALIST_PKG_DIR` to its `R/` source directory |
 | masquerade run succeeds but no `.ome.tiff` is found at the end | The launcher locates the output by running `ls -t ${out_dir}/${base}*.ome.tiff` — wrong `out_dir` permissions or an unexpected `basename` will make it miss | Check the directory of `outPath` in [configFile-batch.txt](masquerade/configFile-batch.txt) and confirm [masquerade_interface.py](masquerade/masquerade_interface.py) wrote the file; see [run-masquerade-batch.sh:34-39](masquerade/run-masquerade-batch.sh) |
+| pcf: `conda env create` fails with `ResolvePackageNotFound: r-base=…` | The channel set available at your site has no R at that exact version | The shipped spec asks for `r-base>=4.1`, so pull the current `environment.yml`; if a site pin still blocks it, create the env with `-c conda-forge` explicitly |
+| pcf: `…/spoold/…/slurm_script: line NN: …/pcf-config.txt: No such file or directory` | SLURM runs a *copy* of the batch script from its spool directory, so the config is not beside it | Pull the current `pcf-meta.s` / `run-pcf.s` — they resolve the module directory from `$PCF_DIR`, `$SLURM_SUBMIT_DIR` or `$PWD` and `cd` there. If it still cannot find it, `export PCF_DIR=/path/to/pcf` before `sbatch` |
+| pcf: `slurm_script: line NNN: PS1: unbound variable` | conda's activation scripts read variables an interactive shell sets but a batch job does not, which is fatal under the launcher's `set -u` | Pull the current `run-pcf.s` — it lifts nounset around conda/module activation only |
+| pcf: `Rscript not found` | Neither `conda_env` nor `r_module` is set in `pcf-config.txt`, and the submitting shell had no R | Set `conda_env=runpcf` (after `conda env create -f environment.yml`), or `r_module=` your site's R module, or activate the env before `sbatch` |
+| pcf: R starts but `there is no package called 'spatstat.explore'` | A `module load` shadowed the conda env's R — the site R is first on `PATH` and has no spatstat | Set either `conda_env` or `r_module` in `pcf-config.txt`, not both |
 | pcf: `no phenotype is present in all N input files` | The phenotype labels differ across CSVs (e.g. one sample was annotated with a different cluster naming) | Pass `--celltypes` explicitly, or harmonise the `Phenotype` column across exports |
 | pcf: `no PCF curves were computed for reference cell type '…'` | Every interaction the reference type takes part in fell below `--count-threshold` in every sample | Lower `count_threshold`, or pick a more abundant `ref_celltype` |
 | pcf-builder: a group's violin is empty, or `Can't find specified reference group` | The selected cell type was skipped (below `count_threshold`) in that sample, so its rows are `NA` | Pick another reference group, or re-run that cohort with a lower `count_threshold`; `<label>_pcf_summary.csv` lists which pairs were skipped |

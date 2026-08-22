@@ -16,7 +16,41 @@ export SEGMENTATION_DIR="${SCRIPT_DIR}"
 
 source "${SCRIPT_DIR}/segmentation-config.txt"
 
-source activate segmentation
+# conda's activation machinery is not written to survive `set -u`: its hook
+# and activate.d scripts reference variables an interactive shell would have
+# but a batch job never sets, so activation aborts the task outright with
+#   slurm_script: line NNN: PS1: unbound variable
+# `source` is also a POSIX special builtin, so under `set -e` a missing
+# `activate` kills the shell before any `|| fallback` can run. Neither is our
+# code, so the mechanism is checked first and nounset is lifted just around
+# the call. Errexit stays on.
+activate_conda() {
+    local env_name="$1"
+    : "${PS1:=}"
+    set +u
+    local ok=0
+    if command -v conda >/dev/null 2>&1; then
+        eval "$(conda shell.bash hook)" && conda activate "${env_name}" && ok=1
+    elif command -v activate >/dev/null 2>&1; then
+        source activate "${env_name}" && ok=1
+    else
+        echo "run-segmentation.s: conda is not on PATH; using the inherited environment" >&2
+        ok=1
+    fi
+    set -u
+    if (( ok == 0 )); then
+        echo "run-segmentation.s: could not activate conda env '${env_name}'; using the inherited environment" >&2
+    fi
+}
+
+activate_conda segmentation
+
+if ! command -v python >/dev/null 2>&1; then
+    echo "run-segmentation.s: python not found after activation." >&2
+    echo "  Create the env (conda env create -f environment.yml) or activate it before submitting" >&2
+    echo "  — segmentation-meta.s submits with --export=ALL, so the submitting shell carries over." >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Extract row N from a line-aligned batch-input file.

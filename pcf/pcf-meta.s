@@ -16,8 +16,43 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SLURM copies the batch script into its spool directory and runs it from
+# there, so ${BASH_SOURCE[0]} is /…/spoold/…/slurm_script — not this module's
+# directory, and the config file is not beside it. Resolve the real location
+# by looking for pcf-config.txt in each candidate that could mean something,
+# most authoritative first. PCF_DIR comes first so pcf-meta.s can hand the
+# array tasks the answer it already resolved (it submits with --export=ALL).
+find_pcf_dir() {
+    local c
+    for c in "${PCF_DIR:-}" \
+             "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" \
+             "${SLURM_SUBMIT_DIR:-}" \
+             "${SLURM_SUBMIT_DIR:+${SLURM_SUBMIT_DIR}/pcf}" \
+             "${PWD}" \
+             "${PWD}/pcf"; do
+        if [[ -n "${c}" && -f "${c}/pcf-config.txt" ]]; then
+            printf '%s\n' "${c}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+if ! SCRIPT_DIR="$(find_pcf_dir)"; then
+    echo "pcf-meta.s: cannot locate pcf-config.txt." >&2
+    echo "  Searched: \$PCF_DIR, this script's directory, \$SLURM_SUBMIT_DIR (+ its pcf/), \$PWD (+ its pcf/)." >&2
+    echo "  SLURM runs a *copy* of the batch script from its spool directory, so the config is" >&2
+    echo "  not next to it. Submit from the module directory (cd pcf && sbatch pcf-meta.s)," >&2
+    echo "  or export PCF_DIR=/path/to/pcf before submitting." >&2
+    exit 1
+fi
 export PCF_DIR="${SCRIPT_DIR}"
+
+# pcf-config.txt declares its batch-input paths relative to the module
+# directory (batch-inputs/…), and makeRunLog-batch.sh sources the config the
+# same way. A SLURM task starts in the submit directory, which is not
+# necessarily that one, so anchor here before anything reads those paths.
+cd "${SCRIPT_DIR}"
 
 source "${SCRIPT_DIR}/pcf-config.txt"
 
