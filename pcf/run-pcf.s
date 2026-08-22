@@ -69,17 +69,33 @@ source "${SCRIPT_DIR}/pcf-config.txt"
 # aborts the task immediately, before any `|| fallback` can run. So the
 # mechanism is checked before it is used, and a missing conda degrades to a
 # warning instead of a silent exit 1.
-if [[ -n "${conda_env:-}" && "${conda_env}" != "NULL" ]]; then
+# conda's activation machinery is not written to survive `set -u`: its hook
+# and activate.d scripts reference variables an interactive shell would have
+# but a batch job never sets, so activation aborts the task outright with
+#   slurm_script: line NNN: PS1: unbound variable
+# That code is not ours to fix, so nounset is lifted just around the call and
+# PS1 is given an empty default. Errexit stays on.
+activate_conda() {
+    local env_name="$1"
+    : "${PS1:=}"
+    set +u
+    local ok=0
     if command -v conda >/dev/null 2>&1; then
-        eval "$(conda shell.bash hook)"
-        conda activate "${conda_env}" \
-            || echo "run-pcf.s: could not activate conda env '${conda_env}'; using the inherited environment" >&2
+        eval "$(conda shell.bash hook)" && conda activate "${env_name}" && ok=1
     elif command -v activate >/dev/null 2>&1; then
-        source activate "${conda_env}" \
-            || echo "run-pcf.s: could not activate conda env '${conda_env}'; using the inherited environment" >&2
+        source activate "${env_name}" && ok=1
     else
-        echo "run-pcf.s: conda_env='${conda_env}' is set but conda is not on PATH; using the inherited environment" >&2
+        echo "run-pcf.s: conda_env='${env_name}' is set but conda is not on PATH; using the inherited environment" >&2
+        ok=1
     fi
+    set -u
+    if (( ok == 0 )); then
+        echo "run-pcf.s: could not activate conda env '${env_name}'; using the inherited environment" >&2
+    fi
+}
+
+if [[ -n "${conda_env:-}" && "${conda_env}" != "NULL" ]]; then
+    activate_conda "${conda_env}"
 fi
 
 # `module` is usually a shell function from /etc/profile.d, which a
@@ -92,7 +108,11 @@ if [[ -n "${r_module:-}" && "${r_module}" != "NULL" ]]; then
         echo "  module system (e.g. /etc/profile.d/modules.sh) before submitting." >&2
         exit 1
     fi
+    # Module implementations are shell functions with the same nounset
+    # problem as conda's hook; lift -u around the load for the same reason.
+    set +u
     module load "${r_module}"
+    set -u
 fi
 
 if ! command -v Rscript >/dev/null 2>&1; then
