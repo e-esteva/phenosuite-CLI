@@ -161,14 +161,27 @@ if [[ -z "${out_dir_tmp}" ]]; then
     exit 1
 fi
 
-mkdir -p "${out_dir_tmp}"
-
+# Values are echoed with [brackets] *before* anything acts on them: a stray
+# CR, a trailing space, or a row picked from a misaligned file is invisible in
+# a bare path, and mkdir failing under `set -e` would otherwise kill the task
+# before the diagnostics below ever printed.
 echo "== run-pcf.s task ${TASK} =="
-echo "  vectra_files    : ${vectra_files_tmp}"
-echo "  out_dir         : ${out_dir_tmp}"
-echo "  label           : ${label_tmp:-<date>}"
-echo "  celltypes       : ${celltypes_tmp:-<shared across inputs>}"
-echo "  ref_celltype    : ${ref_celltype_tmp:-<first celltype>}"
+echo "  config dir      : [${SCRIPT_DIR}]"
+echo "  vectra_files    : [${vectra_files_tmp}]"
+echo "  out_dir         : [${out_dir_tmp}]"
+echo "  label           : [${label_tmp}]"
+echo "  celltypes       : [${celltypes_tmp}]"
+echo "  ref_celltype    : [${ref_celltype_tmp}]"
+
+if ! mkdir -p "${out_dir_tmp}"; then
+    echo "run-pcf.s: could not create out_dir [${out_dir_tmp}]" >&2
+    echo "  Read from row ${TASK} of ${out_dirs}. If that is not the path you expect," >&2
+    echo "  the batch-input files are misaligned — check 'wc -l batch-inputs/*.txt'" >&2
+    echo "  and 'sed -n \"${TASK}p\" ${out_dirs} | cat -A' for stray CR/whitespace." >&2
+    exit 1
+fi
+
+echo "== resolved parameters =="
 echo "  radius          : ${radius}"
 echo "  resolution      : ${resolution}"
 echo "  count_threshold : ${count_threshold}"
