@@ -25,7 +25,9 @@ module=0
 circuit=pdC,CD4T,CD8T
 
 ## meta parameters:
-sample_count=$(wc -l ${spatial_annos} | awk '{print $1}')
+# grep -c '' rather than wc -l: wc counts newlines, so a final line with
+# no trailing newline would be dropped and the last sample never submitted.
+sample_count=$(grep -c '' "${spatial_annos}")
 run_time=6
 memory_=100GB
 spatial_dynamics_meta_partition=a100_short
