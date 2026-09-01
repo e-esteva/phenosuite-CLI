@@ -1028,12 +1028,14 @@ Computes spatial relationships between annotated cell types. Two modules are sel
   ```
   Note that `run-pwlo.py` currently hard-codes `draw=False` and `compute_effect_size=False` ([run-pwlo.py:13](spatial-dynamics/run-pwlo.py)) even though the config exposes those keys — edit the wrapper if you need them.
 
-- `module=1` submits [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s), which calls:
+- `module=1` submits [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s) as an array job. Each task activates the `spatial-dynamics` conda env, extracts its row, and runs:
   ```bash
   python3 run-spatial_circuit-enrichment.py \
-    ${spatial_obj} ${out_dir} ${label} ${circuit}
+    "${spatial_obj}" \  # spatial-annotation CSV
+    "${out_dir}" \      # output directory
+    "${label}" \        # sample label
+    "${circuit}"        # comma-delimited target cell types, e.g. pDC,CD4T,CD8T
   ```
-  See **Known limitations** below — the circuit launcher does not extract per-array-task rows from the batch-inputs lists and the dispatch block in [run-spatial_dynamics.s:16-19](spatial-dynamics/run-spatial_dynamics.s) references a `${spatial_circuit_module_Path}` variable that is not defined in the shipped config.
 
 #### batch-inputs/ format
 
@@ -1985,7 +1987,6 @@ SLURM's own `*_%j.err` / `*_%j.out` files land in the directory you ran `sbatch`
 - **Site-specific paths.** [configFile-batch.txt:3-9](masquerade/configFile-batch.txt) contains hard-coded `/gpfs/data/abl/tric/…` paths that must be edited before use elsewhere. The RunPhenomenalist CLI no longer needs editing for this — it discovers sibling files from its own script directory and loads `library(phenomenalist)` from the normal R library path.
 - **SLURM partitions are site-specific.** `a100_short` and `cpu_dev` will not exist on most clusters — edit each config and the `#SBATCH --partition=` line in [run-masquerade-batch.sh:3](masquerade/run-masquerade-batch.sh) before use.
 - **`run-pwlo.py` hard-codes `draw=False` and `compute_effect_size=False`** ([run-pwlo.py:13](spatial-dynamics/run-pwlo.py)) even though the config exposes those keys. Patch the wrapper if you need them.
-- ** [run-spatial_circuit-enrichment.s](spatial-dynamics/run-spatial_circuit-enrichment.s) does not extract `${spatial_obj}` / `${out_dir}` / `${label}` from the batch-input lists on a per-array-task basis. Expect to fix both before using the circuit-enrichment path.
 - **`relevant_markers` is per-batch, not per-sample.** `run-masquerade-batch.sh` reads row N of `marker-metadata-batch.txt` like the other inputs, so to use one marker list across all samples you must repeat it on every line.
 - **AnnData export needs network access the first time it runs.** `zellkonverter` provisions its own isolated Python env via `basilisk` on first use. SLURM compute nodes are often offline, so do one `--export-anndata=true` run (or `Rscript export-anndata.R …`) on a login node with internet access before relying on the flag inside array jobs.
 - **pcf curve panels are clipped to a PCF of 0–2.** The curve grid keeps the app's `ylim(0, 2)`, which *drops* points outside that band rather than zooming — a very strong short-range interaction leaves a visible gap at small radii instead of a spike. The unclipped values are in `<label>_pcf_curves.csv`.
