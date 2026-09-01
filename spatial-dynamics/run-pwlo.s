@@ -36,4 +36,15 @@ if [[ ! -f "${spatial_obj}" ]]; then
     exit 1
 fi
 
+# pwlo_es_pt.py writes with plain pandas.to_csv() into out_dir — it does not
+# create the directory itself, so a row whose out_dir doesn't already exist
+# fails deep inside the run with "Cannot save file into a non-existent
+# directory". Create it up front instead.
+if ! mkdir -p "${out_dir}"; then
+    echo "run-pwlo.s: could not create out_dir [${out_dir}]" >&2
+    echo "  Read from row ${TASK} of ${outs}. If that is not the path you expect," >&2
+    echo "  the batch-input files are misaligned — check 'wc -l batch-inputs/*.txt'." >&2
+    exit 1
+fi
+
 python3 run-pwlo.py "${spatial_obj}" "${out_dir}" "${label}" "${resolution}" "${p1}" "${p2}"

@@ -31,4 +31,11 @@ if [[ ! -f "${spatial_obj}" ]]; then
     exit 1
 fi
 
+if ! mkdir -p "${out_dir}"; then
+    echo "run-spatial_circuit-enrichment.s: could not create out_dir [${out_dir}]" >&2
+    echo "  Read from row ${TASK} of ${outs}. If that is not the path you expect," >&2
+    echo "  the batch-input files are misaligned — check 'wc -l batch-inputs/*.txt'." >&2
+    exit 1
+fi
+
 python3 run-spatial_circuit-enrichment.py "${spatial_obj}" "${out_dir}" "${label}" "${circuit}"
